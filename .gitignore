@@ -48,12 +48,16 @@ charts/*/Chart.lock
 *.out
 *.tmp
 *.pid
-.env          # 민감한 환경 변수 파일은 반드시 제외
-.env.local
-.env.*.local
+.env
+*.env
+.env.*
+!*.env.example
 
 # ------------------------------
 # ArgoCD / GitOps
 # ------------------------------
 # Sync 시 생기는 캐시/상태 파일
 .argocd-source.yaml
+
+# Python validation cache
+__pycache__/

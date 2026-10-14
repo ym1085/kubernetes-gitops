@@ -1,0 +1,25 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: farm-market-api-prod
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
+spec:
+  project: farm-market-prod
+  source:
+    repoURL: https://github.com/ym1085/sandbox-k8s-gitops.git
+    targetRevision: master
+    path: charts/farm-market-api
+    helm:
+      releaseName: farm-market-api
+      valueFiles:
+        - values-prod.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: farm-market-prod
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - PruneLast=true

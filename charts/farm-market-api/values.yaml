@@ -1,0 +1,52 @@
+replicaCount: 1
+
+image:
+  # Set the published repository and an immutable release tag before deployment.
+  repository: ""
+  tag: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+springProfile: ""
+containerPort: 8080
+terminationGracePeriodSeconds: 45
+existingSecret: farm-market-api-runtime
+env:
+  FARMMARKET_IMAGE_STORAGELOCATION: file:/data/uploads/
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+# shortcut: TCP only checks the listener; use HTTP probes when the API exposes health endpoints.
+startupProbe:
+  tcpSocket:
+    port: http
+  periodSeconds: 10
+  failureThreshold: 30
+  timeoutSeconds: 2
+readinessProbe:
+  tcpSocket:
+    port: http
+  periodSeconds: 5
+  timeoutSeconds: 2
+livenessProbe:
+  tcpSocket:
+    port: http
+  periodSeconds: 10
+  timeoutSeconds: 2
+
+service:
+  port: 80
+
+ingress:
+  enabled: true
+  className: ""
+  host: ""
+  paths:
+    - /api/v1
+  tls: []

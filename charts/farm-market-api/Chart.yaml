@@ -1,0 +1,5 @@
+apiVersion: v2
+name: farm-market-api
+description: Farm Market Spring Boot API
+type: application
+version: 0.1.0
