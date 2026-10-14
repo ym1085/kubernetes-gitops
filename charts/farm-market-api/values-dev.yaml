@@ -1,0 +1,9 @@
+image:
+  tag: ""
+springProfile: dev
+containerPort: 8081
+ingress:
+  className: traefik-dev
+  paths:
+    - /api/v1
+    - /images

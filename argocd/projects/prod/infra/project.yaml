@@ -4,25 +4,23 @@ metadata:
   name: infra-prod
   namespace: argocd
 spec:
-  description: "Production infrastructure services"
+  description: "prod ingress controller"
   sourceRepos:
-    - "https://kubernetes.github.io/ingress-nginx"
+    - https://traefik.github.io/charts
   destinations:
-    - namespace: "ingress-nginx-prod"
+    - namespace: traefik-prod
       server: https://kubernetes.default.svc
   clusterResourceWhitelist:
-    - group: "*"
-      kind: "*"
+    - group: networking.k8s.io
+      kind: IngressClass
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
   namespaceResourceWhitelist:
-    - group: "apps"
-      kind: "Deployment"
+    - group: apps
+      kind: Deployment
     - group: ""
-      kind: "Service"
+      kind: Service
     - group: ""
-      kind: "ConfigMap"
-    - group: ""
-      kind: "ServiceAccount"
-    - group: "rbac.authorization.k8s.io"
-      kind: "Role"
-    - group: "rbac.authorization.k8s.io"
-      kind: "RoleBinding"
+      kind: ServiceAccount

@@ -1,0 +1,10 @@
+# shortcut: the API has no stg profile; isolate its dev profile with the stg namespace and Secret.
+image:
+  tag: ""
+springProfile: dev
+containerPort: 8081
+ingress:
+  className: traefik-stg
+  paths:
+    - /api/v1
+    - /images

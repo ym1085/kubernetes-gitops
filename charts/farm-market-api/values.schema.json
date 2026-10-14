@@ -1,0 +1,78 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["replicaCount", "image", "imagePullSecrets", "springProfile", "containerPort", "terminationGracePeriodSeconds", "existingSecret", "env", "resources", "startupProbe", "readinessProbe", "livenessProbe", "service", "ingress"],
+  "properties": {
+    "replicaCount": {"type": "integer", "minimum": 1},
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "tag", "pullPolicy"],
+      "properties": {
+        "repository": {"type": "string", "minLength": 1, "pattern": "^[^ @]+$"},
+        "tag": {"type": "string", "pattern": "^[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,127}$", "not": {"enum": ["latest", "dev", "stg", "prod"]}},
+        "pullPolicy": {"enum": ["IfNotPresent", "Always", "Never"]}
+      }
+    },
+    "imagePullSecrets": {
+      "type": "array",
+      "items": {"type": "object", "additionalProperties": false, "required": ["name"], "properties": {"name": {"type": "string", "minLength": 1}}}
+    },
+    "springProfile": {"enum": ["dev", "prod"]},
+    "containerPort": {"$ref": "#/definitions/port"},
+    "terminationGracePeriodSeconds": {"type": "integer", "minimum": 31},
+    "existingSecret": {"type": "string", "minLength": 1, "maxLength": 253, "pattern": "^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$"},
+    "env": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[A-Z_][A-Z0-9_]*$",
+        "not": {"enum": ["SERVER_PORT", "SPRING_PROFILES_ACTIVE", "SPRING_DATASOURCE_URL", "SPRING_DATASOURCE_USERNAME", "SPRING_DATASOURCE_PASSWORD", "JWT_SECRET", "REDIS_HOST", "REDIS_PASSWORD", "FARMMARKET_IMAGE_BASEURL"]}
+      },
+      "additionalProperties": {"type": "string"}
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {"requests": {"$ref": "#/definitions/resourceList"}, "limits": {"$ref": "#/definitions/resourceList"}}
+    },
+    "startupProbe": {"$ref": "#/definitions/tcpProbe"},
+    "readinessProbe": {"$ref": "#/definitions/tcpProbe"},
+    "livenessProbe": {"$ref": "#/definitions/tcpProbe"},
+    "service": {
+      "type": "object", "additionalProperties": false, "required": ["port"],
+      "properties": {"port": {"$ref": "#/definitions/port"}}
+    },
+    "ingress": {
+      "type": "object", "additionalProperties": false,
+      "required": ["enabled", "className", "host", "paths", "tls"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "className": {"type": "string"},
+        "host": {"type": "string"},
+        "paths": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^/"}},
+        "tls": {
+          "type": "array",
+          "items": {"type": "object", "additionalProperties": false, "required": ["secretName", "hosts"], "properties": {"secretName": {"type": "string", "minLength": 1}, "hosts": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}}}
+        }
+      },
+      "if": {"properties": {"enabled": {"const": true}}},
+      "then": {"properties": {"className": {"minLength": 1}}}
+    }
+  },
+  "allOf": [{"if": {"properties": {"springProfile": {"const": "prod"}}}, "then": {"properties": {"terminationGracePeriodSeconds": {"minimum": 61}}}}],
+  "definitions": {
+    "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+    "resourceList": {"type": "object", "additionalProperties": false, "properties": {"cpu": {"type": "string", "minLength": 1}, "memory": {"type": "string", "minLength": 1}}},
+    "tcpProbe": {
+      "type": "object", "additionalProperties": false, "required": ["tcpSocket"],
+      "properties": {
+        "tcpSocket": {"type": "object", "additionalProperties": false, "required": ["port"], "properties": {"port": {"const": "http"}}},
+        "periodSeconds": {"type": "integer", "minimum": 1},
+        "timeoutSeconds": {"type": "integer", "minimum": 1},
+        "failureThreshold": {"type": "integer", "minimum": 1},
+        "initialDelaySeconds": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}
