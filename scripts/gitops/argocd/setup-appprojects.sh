@@ -8,6 +8,7 @@ esac
 
 root_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd)"
 echo "Kubernetes context: $(kubectl config current-context)"
+kubectl apply -f "$root_dir/argocd/bootstrap/$profile/namespaces.yaml"
 kubectl apply -f "$root_dir/argocd/bootstrap/$profile/root-project.yaml"
 kubectl apply -f "$root_dir/argocd/bootstrap/$profile/projects-root.yaml"
 echo "Argo CD will reconcile AppProjects from Git ($profile)."

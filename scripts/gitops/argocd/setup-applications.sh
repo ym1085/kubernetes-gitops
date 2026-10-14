@@ -12,5 +12,6 @@ if ! kubectl get appproject "gitops-$profile" -n argocd >/dev/null 2>&1; then
   echo "Run setup-appprojects.sh $profile first." >&2
   exit 1
 fi
+kubectl apply -f "$root_dir/argocd/bootstrap/$profile/namespaces.yaml"
 kubectl apply -f "$root_dir/argocd/bootstrap/$profile/applications-root.yaml"
 echo "Argo CD will reconcile Applications from Git ($profile)."

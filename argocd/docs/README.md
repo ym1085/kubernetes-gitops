@@ -12,7 +12,7 @@ bootstrap/{env}/applications-root.yaml     applications/{env}/ 감시
                         charts/farm-market-api + values-{env}.yaml
 ```
 
-`setup-appprojects.sh`는 관리자 Project와 projects root만 등록한다. `setup-applications.sh`는 applications root만 등록한다. 이후 서비스 추가 시 스크립트를 수정하지 않는다. projects와 applications root가 별도로 동기화되므로 최초에는 자식 Project 생성 전 일시적으로 오류가 보일 수 있으며 Project 생성 뒤 재조정된다.
+두 등록 스크립트는 `bootstrap/{env}/namespaces.yaml`을 먼저 적용하고, 실패하면 root를 등록하지 않는다. `setup-appprojects.sh`는 이어서 관리자 Project와 projects root를 등록하고, `setup-applications.sh`는 applications root를 등록한다. namespace 생성은 관리자 bootstrap의 책임이며 서비스 Project에는 Namespace 권한을 주지 않는다. 새 namespace가 필요하면 이 파일을 갱신해 root 동기화 전에 적용한다. projects와 applications root가 별도로 동기화되므로 최초에는 자식 Project 생성 전 일시적으로 오류가 보일 수 있으며 Project 생성 뒤 재조정된다.
 
 root는 모든 환경에서 선언의 생성·수정을 자동 반영한다. prod 자식 Application에는 자동 sync가 없어 실제 서비스 반영은 운영자가 실행한다. root 자동 prune은 꺼져 있으며 삭제는 root에서 수동 prune한다. root에 삭제 전파 finalizer를 두지 않았다. root 자체를 삭제해도 자식 서비스가 자동 삭제되지 않는다.
 
@@ -28,7 +28,7 @@ root Project는 argocd namespace의 Application·AppProject를 관리하므로 �
 
 ```bash
 kubectl config current-context
-kubectl create namespace farm-market-dev
+kubectl apply -f argocd/bootstrap/dev/namespaces.yaml
 cp examples/farm-market-api.env.example farm-market-dev.env
 # 로컬 env 파일에 실제 값을 입력한다. *.env 파일은 Git에서 제외된다.
 kubectl -n farm-market-dev create secret generic farm-market-api-runtime \
@@ -40,6 +40,14 @@ bash scripts/gitops/argocd/setup-applications.sh dev
 ```
 
 각 환경에는 별도 Secret과 DB·Redis 설정을 사용한다. `farm-market-dev.env` 파일을 다른 환경에 그대로 재사용하지 않는다. 사설 레지스트리는 같은 namespace에 pull Secret을 만들고 `imagePullSecrets`에 이름을 지정한다. 이 저장소는 특정 Secret 관리 제품을 설치하지 않는다. 외부 Secret 관리 도구가 있다면 동일한 이름/키의 Kubernetes Secret을 공급하면 된다.
+
+## Argo CD 관리자 접속
+
+모든 환경에서 `server.insecure: false`로 TLS를 켠다. prod 관리 Service는 ClusterIP여서 기존 32180/32543 NodePort를 외부에 열지 않는다. dev/stg의 NodePort 번호와 API/Traefik NodePort는 유지한다. prod의 기존 NodePort 번호는 참조용으로 보관하며 ClusterIP 렌더링에는 포함되지 않는다.
+
+Kubernetes 권한이 있는 운영자는 `kubectl -n argocd port-forward svc/argocd-server 8443:443 --address 127.0.0.1`을 실행한 뒤 `https://localhost:8443`으로 접속한다. 초기에는 Argo CD 자체 서명 인증서가 사용된다. 상시 운영 접속에는 `argocd-server-tls` Secret에 신뢰할 수 있는 인증서를 공급하고, 인증서 이름에 맞는 호스트로 접속한다. [Argo CD TLS 설정](https://argo-cd.readthedocs.io/en/stable/operator-manual/tls/)
+
+이미 설치된 Argo CD에는 bootstrap values의 로컬 수정이 자동 반영되지 않는다. 별도의 관리 창에서 같은 Helm release를 갱신해야 하며, prod NodePort 접속은 그때 종료된다. 먼저 port-forward 접속 권한을 확인한다. 이 문서의 명령은 운영자가 적용할 때를 위한 것이며 저장소 수정 과정에서는 실행하지 않는다.
 
 필수 Secret 키:
 
@@ -94,7 +102,7 @@ infra AppProject는 IngressClass·ClusterRole·ClusterRoleBinding과 Deployment�
 1. 대상 환경의 기존 Application 선언과 실제 컨트롤러 리소스를 백업한다. 기존 컨트롤러가 처리하는 다른 Ingress와 nginx 전용 annotation이 있는지 확인한다. 이 저장소 밖의 Ingress는 자동 변환되지 않는다.
 2. 기존 root가 있다면 applications root와 projects root의 자동 sync를 중지한 뒤 기존 `ingress-nginx-{env}` Application의 자동 sync도 중지한다. root가 자동 sync를 다시 켜지 않도록 주의한다. 새 Git 구성을 반영하기 전에 수행한다.
 3. **기존 infra Project 권한이 남아 있는 동안** 기존 controller Application을 리소스까지 연쇄 삭제한다. 기존 Application에 삭제 finalizer가 없을 수 있으므로 단순 `kubectl delete application`만으로 정리되었다고 판단하지 않는다. Helm으로 설치했다면 해당 Helm release를 제거한다. 백업한 리소스 목록을 기준으로 잔여 Service·IngressClass·RBAC를 확인하고 위 NodePort가 해제되었는지 확인한다.
-4. 새 구성을 대상 브랜치에 반영하고 projects root를 먼저 sync해 새 infra Project를 반영한다. 이후 applications root를 sync하고 두 root의 자동 sync를 선언대로 복구한다. prod는 `traefik-prod`와 `farm-market-api-prod`를 수동 sync한다. dev/stg는 자식 Application이 자동 sync한다.
+4. 새 구성을 대상 브랜치에 반영하고 `bootstrap/{env}/namespaces.yaml`을 먼저 적용한다. projects root를 sync해 새 infra Project를 반영한 뒤 applications root를 sync하고 두 root의 자동 sync를 선언대로 복구한다. prod는 `traefik-prod`와 `farm-market-api-prod`를 수동 sync한다. dev/stg는 자식 Application이 자동 sync한다.
 5. 컨트롤러 Pod Ready, Service NodePort, API IngressClass와 `/api/v1` 요청을 확인한다. TLS를 설정했다면 HTTPS도 확인한다. 기존 namespace가 비어 있는지 확인한 뒤 필요할 때만 정리한다.
 
 롤백할 때는 새 컨트롤러의 자동 재생성을 먼저 중지하고 리소스를 제거해 NodePort를 해제한다. 백업한 기존 Project·Application·Ingress class 설정을 함께 복원한다. 유지보수가 종료된 컨트롤러 복원은 장애 복구용 임시 조치다. 저장소 수정 과정에서 위 클러스터 작업은 실행하지 않았다.

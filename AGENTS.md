@@ -10,6 +10,8 @@
 - 서비스 스펙은 `charts/farm-market-api`, 환경 차이는 `values-{env}.yaml`, 공통값은 `values.yaml`에서 관리한다.
 - 권한은 `argocd/projects/{env}/{apps,infra}`에서 관리한다. 새 namespace·저장소·리소스 kind가 필요하면 Project도 수정한다.
 - `argocd/bootstrap/common`과 환경별 `argo-cd-install-values.yaml`은 Argo CD 설치 설정이다.
+- `argocd/bootstrap/{env}/namespaces.yaml`은 관리자가 먼저 생성하는 namespace 목록이다. workload Project에 Namespace 권한을 주거나 CreateNamespace에 의존하지 않는다.
+- Argo CD TLS는 모든 환경에서 켠다. prod 관리 Service는 ClusterIP이며 운영자는 Kubernetes 권한으로 로컬 port-forward한다.
 - `argocd/bootstrap/{env}/root-project.yaml`, `projects-root.yaml`, `applications-root.yaml`은 관리자용 최초 연결 선언이다. root는 각각 projects/applications 하위만 재귀적으로 동기화한다.
 - root 선언과 AppProject를 바꿀 수 있는 권한은 관리자 권한이다. 서비스 Project에 argocd namespace나 불필요한 cluster 권한을 허용하지 않는다.
 - Traefik은 외부 Helm repo의 고정 버전을 사용한다. 표준 Ingress provider만 켜고 CRD 설치를 건너뛴다.

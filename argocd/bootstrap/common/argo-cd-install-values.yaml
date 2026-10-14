@@ -4,4 +4,4 @@ server:
 
 configs:
   params:
-    server.insecure: true
+    server.insecure: false
