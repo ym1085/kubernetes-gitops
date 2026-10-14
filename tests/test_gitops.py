@@ -1,10 +1,12 @@
 import copy
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts/gitops"))
@@ -89,6 +91,28 @@ class ChartTests(unittest.TestCase):
 
 
 class PolicyTests(unittest.TestCase):
+    def test_bootstrap_rejects_missing_namespace_and_insecure_admin_access(self):
+        for environment in ("dev", "stg", "prod"):
+            apps = {p.stem: validate.read_yaml(p) for p in (ROOT / "argocd/applications" / environment).rglob("*.yaml")}
+            validate.validate_bootstrap(environment, apps)
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                shutil.copytree(ROOT / "argocd/bootstrap", root / "argocd/bootstrap")
+                namespaces = root / f"argocd/bootstrap/{environment}/namespaces.yaml"
+                namespaces.write_text(f"apiVersion: v1\nkind: Namespace\nmetadata:\n  name: farm-market-{environment}\n")
+                with patch.object(validate, "ROOT", root), self.assertRaisesRegex(ValueError, "Bootstrap namespaces"):
+                    validate.validate_bootstrap(environment, apps)
+                shutil.copyfile(ROOT / f"argocd/bootstrap/{environment}/namespaces.yaml", namespaces)
+                override = root / f"argocd/bootstrap/{environment}/argo-cd-install-values.yaml"
+                original = override.read_text()
+                override.write_text(original + "\nconfigs:\n  params:\n    server.insecure: true\n")
+                with patch.object(validate, "ROOT", root), self.assertRaisesRegex(ValueError, "TLS"):
+                    validate.validate_bootstrap(environment, apps)
+                if environment == "prod":
+                    override.write_text(original.replace("type: ClusterIP", "type: NodePort"))
+                    with patch.object(validate, "ROOT", root), self.assertRaisesRegex(ValueError, "external Service"):
+                        validate.validate_bootstrap(environment, apps)
+
     def test_prod_rejects_implicit_and_explicit_auto_sync(self):
         validate.validate_sync_policy({"syncPolicy": {}}, "prod")
         for automated in ({}, {"enabled": True}, {"enabled": None}, {"prune": True, "selfHeal": True}):
@@ -115,23 +139,28 @@ class PolicyTests(unittest.TestCase):
 
 
 class SetupScriptTests(unittest.TestCase):
-    def test_only_bootstrap_roots_are_applied(self):
+    def test_namespaces_are_prepared_before_roots_and_failure_stops_registration(self):
         with tempfile.TemporaryDirectory() as directory:
             directory = Path(directory)
             log = directory / "calls"
             kubectl = directory / "kubectl"
-            kubectl.write_text('#!/bin/bash\nprintf "%s\\n" "$*" >> "$KUBECTL_TEST_LOG"\nif [[ "$1" == get && "${MISSING_PROJECT:-0}" == 1 ]]; then exit 1; fi\n')
+            kubectl.write_text('#!/bin/bash\nprintf "%s\\n" "$*" >> "$KUBECTL_TEST_LOG"\nif [[ "$1" == get && "${MISSING_PROJECT:-0}" == 1 ]]; then exit 1; fi\nif [[ "$*" == *namespaces.yaml && "${FAIL_NAMESPACES:-0}" == 1 ]]; then exit 1; fi\n')
             kubectl.chmod(0o755)
             env = {**os.environ, "PATH": f"{directory}:{os.environ['PATH']}", "KUBECTL_TEST_LOG": str(log)}
             scripts = ROOT / "scripts/gitops/argocd"
             for environment in ("dev", "stg", "prod"):
                 for script in ("setup-appprojects.sh", "setup-applications.sh"):
+                    log.write_text("")
                     result = subprocess.run(["bash", str(scripts / script), environment], env=env, text=True, capture_output=True)
                     self.assertEqual(result.returncode, 0, result.stderr)
-                calls = log.read_text()
-                for name in ("root-project.yaml", "projects-root.yaml", "applications-root.yaml"):
-                    self.assertIn(f"argocd/bootstrap/{environment}/{name}", calls)
-                self.assertNotIn("apply -R", calls)
+                    applied = [line.split()[-1] for line in log.read_text().splitlines() if line.startswith("apply ")]
+                    expected = ["namespaces.yaml", "root-project.yaml", "projects-root.yaml"] if script == "setup-appprojects.sh" else ["namespaces.yaml", "applications-root.yaml"]
+                    self.assertEqual(applied, [str(ROOT / f"argocd/bootstrap/{environment}/{name}") for name in expected])
+                    log.write_text("")
+                    result = subprocess.run(["bash", str(scripts / script), environment], env={**env, "FAIL_NAMESPACES": "1"}, text=True, capture_output=True)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertNotIn("-root.yaml", log.read_text())
+                    self.assertNotIn("root-project.yaml", log.read_text())
             log.write_text("")
             for script in ("setup-appprojects.sh", "setup-applications.sh"):
                 result = subprocess.run(["bash", str(scripts / script), "invalid"], env=env, text=True, capture_output=True)

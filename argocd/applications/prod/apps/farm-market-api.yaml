@@ -20,6 +20,5 @@ spec:
     namespace: farm-market-prod
   syncPolicy:
     syncOptions:
-      - CreateNamespace=true
       - ServerSideApply=true
       - PruneLast=true

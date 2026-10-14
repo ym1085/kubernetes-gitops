@@ -1,4 +1,6 @@
 server:
   service:
+    # Admin access uses port-forward; the old NodePort numbers are kept for reference.
+    type: ClusterIP
     nodePortHttp: 32180
     nodePortHttps: 32543
