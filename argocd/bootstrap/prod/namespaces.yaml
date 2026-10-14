@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: farm-market-prod
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: traefik-prod

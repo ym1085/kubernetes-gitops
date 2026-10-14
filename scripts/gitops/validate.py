@@ -73,6 +73,23 @@ def validate_sync_policy(spec, environment):
             f"Wrong {environment} workload sync policy")
 
 
+def validate_bootstrap(environment, apps):
+    bootstrap = ROOT / "argocd/bootstrap" / environment
+    namespaces = list(yaml.safe_load_all((bootstrap / "namespaces.yaml").read_text()))
+    require(all(ns and ns.get("apiVersion") == "v1" and ns.get("kind") == "Namespace" for ns in namespaces),
+            f"Bootstrap must contain only Namespace resources: {environment}")
+    names = [ns["metadata"]["name"] for ns in namespaces]
+    expected = {app["spec"]["destination"]["namespace"] for app in apps.values()} - {"argocd"}
+    require(len(names) == len(set(names)) and set(names) == expected, f"Bootstrap namespaces do not match Application destinations: {environment}")
+    common = read_yaml(ROOT / "argocd/bootstrap/common/argo-cd-install-values.yaml")
+    override = read_yaml(bootstrap / "argo-cd-install-values.yaml")
+    insecure = override.get("configs", {}).get("params", {}).get("server.insecure", common["configs"]["params"]["server.insecure"])
+    require(insecure is False, f"Argo CD TLS must be enabled: {environment}")
+    if environment == "prod":
+        service = {**common["server"]["service"], **override["server"]["service"]}
+        require(service["type"] == "ClusterIP" and not service.get("externalIPs"), "Prod Argo CD must not expose an external Service")
+
+
 def render_external(app):
     source = app["spec"]["source"]
     helm = source["helm"]
@@ -172,6 +189,7 @@ def validate(fixtures=False, external_charts=False):
                 validate_sync_policy(spec, environment)
             count += 1
 
+        validate_bootstrap(environment, apps)
         for kind in ("applications", "projects"):
             root = apps[f"{kind}-{environment}"]
             source = root["spec"]["source"]

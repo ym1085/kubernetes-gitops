@@ -6,7 +6,7 @@
 
 ```text
 argocd/
-  bootstrap/{env}/       # Argo CD 설치 override, 관리자 Project, root Applications
+  bootstrap/{env}/       # namespace, Argo CD 설치 override, 관리자 Project, root Applications
   applications/{env}/   # apps: API / infra: 외부 Helm 차트
   projects/{env}/       # 서비스·플랫폼별 배포 권한
 charts/farm-market-api/ # 공통 차트 + values-{env}.yaml
@@ -43,15 +43,17 @@ python3 -m unittest discover -s tests -v
 # Argo CD가 없을 때 한 번만 설치
 bash scripts/gitops/argocd/bootstrap-argocd.sh
 
-# 현재 kubectl context에 dev용 root 선언 등록
+# 현재 kubectl context에 namespace를 먼저 준비하고 dev용 root 선언 등록
 bash scripts/gitops/argocd/setup-appprojects.sh dev
 bash scripts/gitops/argocd/setup-applications.sh dev
 ```
 
 이후 Application·AppProject 추가와 수정은 root Applications가 Git에서 반영합니다. 서비스 배포는 위 환경별 정책을 따릅니다. root의 자동 prune은 꺼져 있어 선언 삭제는 별도 수동 prune이 필요합니다.
 
+Argo CD는 모든 환경에서 HTTPS를 사용합니다. prod 관리 화면은 ClusterIP로 제한하며, Kubernetes 접근 권한이 있는 운영자가 `kubectl -n argocd port-forward svc/argocd-server 8443:443 --address 127.0.0.1`로 연결합니다. 상세 인증서 설정은 운영 가이드를 확인합니다.
+
 ## 확장
 
-새 실행 서비스를 추가할 때 차트와 환경 values, `applications/{env}/apps` 선언을 추가합니다. 같은 권한 범위라면 기존 Project를 사용하고, namespace 또는 저장소가 달라지면 Project도 함께 수정합니다. 공통 배포 스크립트에는 서비스 이름을 추가하지 않습니다.
+새 실행 서비스를 추가할 때 차트와 환경 values, `applications/{env}/apps` 선언을 추가합니다. 같은 권한 범위라면 기존 Project를 사용하고, namespace 또는 저장소가 달라지면 Project도 함께 수정합니다. 새 namespace는 `bootstrap/{env}/namespaces.yaml`에 선언하고 root 동기화 전에 준비합니다. 공통 배포 스크립트에는 서비스 이름을 추가하지 않습니다.
 
 Traefik 차트 41.7.1을 사용하며 기존 환경별 NodePort를 유지합니다. 기존 ingress-nginx가 설치되어 있다면 [전환 절차](argocd/docs/README.md#ingress-nginx에서-traefik으로-전환)를 먼저 따릅니다.
