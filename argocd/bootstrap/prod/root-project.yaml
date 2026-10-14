@@ -1,0 +1,18 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: gitops-prod
+  namespace: argocd
+spec:
+  description: Administrator-owned Argo CD declarations (prod)
+  sourceRepos:
+    - https://github.com/ym1085/sandbox-k8s-gitops.git
+  destinations:
+    - namespace: argocd
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist:
+    - group: argoproj.io
+      kind: AppProject
+    - group: argoproj.io
+      kind: Application

@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: farm-market-stg
+  namespace: argocd
+spec:
+  description: Farm Market API (stg)
+  sourceRepos:
+    - https://github.com/ym1085/sandbox-k8s-gitops.git
+  destinations:
+    - namespace: farm-market-stg
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist:
+    - group: apps
+      kind: Deployment
+    - group: ""
+      kind: Service
+    - group: networking.k8s.io
+      kind: Ingress

@@ -1,0 +1,23 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: projects-prod
+  namespace: argocd
+spec:
+  project: gitops-prod
+  source:
+    repoURL: https://github.com/ym1085/sandbox-k8s-gitops.git
+    targetRevision: master
+    path: argocd/projects/prod
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      # Removing a declaration requires an explicit prune of the root Application.
+      prune: false
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true

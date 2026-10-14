@@ -1,0 +1,56 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: traefik-dev
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
+spec:
+  project: infra-dev
+  source:
+    repoURL: https://traefik.github.io/charts
+    chart: traefik
+    targetRevision: 41.7.1
+    helm:
+      releaseName: traefik-dev
+      skipCrds: true
+      values: |
+        ingressClass:
+          enabled: true
+          isDefaultClass: false
+          name: traefik-dev
+        providers:
+          kubernetesCRD:
+            enabled: false
+          kubernetesGateway:
+            enabled: false
+          kubernetesIngress:
+            enabled: true
+            ingressClass: traefik-dev
+            namespaces:
+              - farm-market-dev
+            strictPrefixMatching: true
+        service:
+          type: NodePort
+        ports:
+          web:
+            nodePort: 30080
+          websecure:
+            nodePort: 30443
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            memory: 256Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: traefik-dev
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - PruneLast=true

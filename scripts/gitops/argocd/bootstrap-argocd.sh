@@ -34,8 +34,6 @@ echo -e "ROOT_DIR: $ROOT_DIR\n"
 
 ARGOCD_COMMON_VALUES="$ROOT_DIR/argocd/bootstrap/common/argo-cd-install-values.yaml"
 ARGOCD_ENV_VALUES="$ROOT_DIR/argocd/bootstrap/${PROFILE}/argo-cd-install-values.yaml"
-IMAGE_UPDATER_COMMON_VALUES="$ROOT_DIR/argocd/bootstrap/common/image-updater-install-values.yaml"
-IMAGE_UPDATER_ENV_VALUES="$ROOT_DIR/argocd/bootstrap/${PROFILE}/image-updater-install-values.yaml"
 
 ####################################
 # ArgoCD namespace 생성
@@ -62,19 +60,6 @@ helm install argocd argo/argo-cd \
     -f "$ARGOCD_COMMON_VALUES" \
     -f "$ARGOCD_ENV_VALUES" \
     --wait
-
-####################################
-# ArgoCD Image Updater 설치
-####################################
-IMAGE_UPDATER_VALUES=(-f "$IMAGE_UPDATER_COMMON_VALUES")
-if [[ -f "$IMAGE_UPDATER_ENV_VALUES" ]]; then
-  IMAGE_UPDATER_VALUES+=(-f "$IMAGE_UPDATER_ENV_VALUES")
-fi
-
-helm install argocd-image-updater argo/argocd-image-updater \
-    --namespace argocd \
-    --version 0.12.0 \
-    "${IMAGE_UPDATER_VALUES[@]}"
 
 ####################################
 # ArgoCD 서버 Pod가 준비될때까지 대기

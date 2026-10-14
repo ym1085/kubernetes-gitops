@@ -1,8 +1,0 @@
-helm:
-  parameters:
-  - name: deployment.containers[0].image
-    value: youngmin1085/user-service
-    forcestring: true
-  - name: deployment.containers[0].tag
-    value: stg-6f519ba
-    forcestring: true

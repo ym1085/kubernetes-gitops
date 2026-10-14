@@ -1,161 +1,108 @@
-# Argo CD Option Guide
+# Farm Market GitOps 운영 가이드
 
-이 문서는 이 저장소에서 사용하는 `Application`과 `AppProject` 옵션을 빠르게 확인하기 위한 문서다.
-
-## 한눈에 보기
+## 배포 경로
 
 ```text
-Application
-├── source       무엇을 배포할지
-├── destination  어디에 배포할지
-├── project      어떤 권한으로 배포할지
-└── syncPolicy   어떻게 동기화할지
-        │
-        ▼
-AppProject
-├── sourceRepos               허용된 저장소
-├── destinations              허용된 클러스터와 namespace
-└── clusterResourceWhitelist  허용된 cluster-scoped 리소스
+bootstrap/{env}/root-project.yaml          관리자용 gitops-{env} Project
+bootstrap/{env}/projects-root.yaml         projects/{env}/ 감시
+bootstrap/{env}/applications-root.yaml     applications/{env}/ 감시
+                                                    |
+                              apps/farm-market-api.yaml
+                                                    |
+                        charts/farm-market-api + values-{env}.yaml
 ```
 
-실제 연결 예시:
+`setup-appprojects.sh`는 관리자 Project와 projects root만 등록한다. `setup-applications.sh`는 applications root만 등록한다. 이후 서비스 추가 시 스크립트를 수정하지 않는다. projects와 applications root가 별도로 동기화되므로 최초에는 자식 Project 생성 전 일시적으로 오류가 보일 수 있으며 Project 생성 뒤 재조정된다.
 
-```text
-applications/dev/apps/order-service.yaml
-  spec.project: order-dev
-                │
-                ▼
-projects/dev/apps/order.yaml
-  metadata.name: order-dev
+root는 모든 환경에서 선언의 생성·수정을 자동 반영한다. prod 자식 Application에는 자동 sync가 없어 실제 서비스 반영은 운영자가 실행한다. root 자동 prune은 꺼져 있으며 삭제는 root에서 수동 prune한다. root에 삭제 전파 finalizer를 두지 않았다. root 자체를 삭제해도 자식 서비스가 자동 삭제되지 않는다.
+
+root Project는 argocd namespace의 Application·AppProject를 관리하므로 관리자 권한이다. bootstrap, applications, projects 변경 권한을 보호하고 저장소의 branch protection과 리뷰 정책을 별도로 설정한다. 폴더 분리만으로 Git 쓰기 권한이 격리되지는 않는다. [Argo CD 공식 안내](https://argo-cd.readthedocs.io/en/stable/operator-manual/cluster-bootstrapping/)
+
+## 최초 배포 입력
+
+1. API 저장소에서 Java 17 기반의 api-server 실행 이미지를 빌드·게시한다. 이미지의 실행 사용자는 non-root여야 한다. 이 차트는 루트 파일시스템을 읽기 전용으로 두고 `/tmp`만 쓰기 가능하게 마운트한다.
+2. `charts/farm-market-api/values.yaml`의 `image.repository`와 각 `values-{env}.yaml`의 `image.tag`를 실제 값으로 채운다. `latest`, `dev`, `stg`, `prod` 같은 이동 태그는 허용하지 않는다. 레지스트리에서도 릴리스 태그 재사용을 금지한다.
+3. 해당 namespace에 DB·Redis·JWT·이미지 URL을 담은 Secret을 만든다. MySQL/Redis 자체의 설치·백업은 이 API 차트에서 관리하지 않는다.
+4. Secret과 실제 이미지가 준비되면 fixtures 없이 검증하고, 변경을 해당 Application이 참조하는 브랜치에 반영한다. 현재 작업 브랜치는 Application의 동기화 대상이 아니다.
+5. 아래 root 등록 명령을 실행한다. 기존 Argo CD가 있으면 bootstrap 설치를 반복하지 않는다.
+
+```bash
+kubectl config current-context
+kubectl create namespace farm-market-dev
+cp examples/farm-market-api.env.example farm-market-dev.env
+# 로컬 env 파일에 실제 값을 입력한다. *.env 파일은 Git에서 제외된다.
+kubectl -n farm-market-dev create secret generic farm-market-api-runtime \
+  --from-env-file=farm-market-dev.env
+
+python3 scripts/gitops/validate.py
+bash scripts/gitops/argocd/setup-appprojects.sh dev
+bash scripts/gitops/argocd/setup-applications.sh dev
 ```
 
-## Application 옵션
+각 환경에는 별도 Secret과 DB·Redis 설정을 사용한다. `farm-market-dev.env` 파일을 다른 환경에 그대로 재사용하지 않는다. 사설 레지스트리는 같은 namespace에 pull Secret을 만들고 `imagePullSecrets`에 이름을 지정한다. 이 저장소는 특정 Secret 관리 제품을 설치하지 않는다. 외부 Secret 관리 도구가 있다면 동일한 이름/키의 Kubernetes Secret을 공급하면 된다.
 
-```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: order-service-dev
-  namespace: argocd
-spec:
-  project: order-dev
-  source:
-    repoURL: https://github.com/ym1085/sandbox-k8s-gitops.git
-    targetRevision: dev
-    path: charts/order-service
-    helm:
-      valueFiles:
-        - values-dev.yaml
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: order-dev
-  syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
-    syncOptions:
-      - CreateNamespace=true
-      - ServerSideApply=true
-      - ServerSideDiff=true
-      - PruneLast=true
-```
+필수 Secret 키:
 
-| 옵션                    | 의미                                        | 현재 예시                        |
-| ----------------------- | ------------------------------------------- | -------------------------------- |
-| `metadata.name`         | Argo CD Application 이름                    | `order-service-dev`              |
-| `metadata.namespace`    | Application CR이 생성되는 namespace         | `argocd`                         |
-| `spec.project`          | 사용할 AppProject 이름                      | `order-dev`                      |
-| `source.repoURL`        | Git 또는 Helm repository                    | `sandbox-k8s-gitops.git`         |
-| `source.targetRevision` | Git branch/tag/SHA 또는 Helm chart 버전     | `dev`, `stg`, `master`, `4.11.0` |
-| `source.path`           | Git repository 안의 chart/manifest 경로     | `charts/order-service`           |
-| `source.chart`          | 외부 Helm repository의 chart 이름           | `ingress-nginx`                  |
-| `helm.valueFiles`       | 기본 values 위에 병합할 환경 values         | `values-dev.yaml`                |
-| `helm.values`           | Application 안에 직접 작성하는 Helm values  | ingress-nginx 설정               |
-| `destination.server`    | 대상 Kubernetes API server                  | 현재 클러스터                    |
-| `destination.namespace` | 리소스를 배포할 namespace                   | `order-dev`                      |
-| `automated`             | Git 변경을 자동으로 sync                    | dev/stg만 사용                   |
-| `prune`                 | Git에서 삭제된 리소스를 클러스터에서도 삭제 | dev/stg `true`                   |
-| `selfHeal`              | 수동 변경된 클러스터 상태를 Git 상태로 복구 | dev/stg `true`                   |
-| `CreateNamespace=true`  | destination namespace가 없으면 생성         | 모든 Application                 |
-| `ServerSideApply=true`  | Kubernetes Server-Side Apply 사용           | 모든 Application                 |
-| `PruneLast=true`        | sync 마지막 단계에서 리소스 삭제            | 모든 Application                 |
+| 키 | 용도 |
+| --- | --- |
+| SPRING_DATASOURCE_URL | 환경별 MySQL JDBC URL |
+| SPRING_DATASOURCE_USERNAME | DB 사용자 |
+| SPRING_DATASOURCE_PASSWORD | DB 비밀번호 |
+| JWT_SECRET | Base64로 인코딩한 최소 32바이트 랜덤 키 |
+| REDIS_HOST | 환경별 Redis 주소 |
+| REDIS_PASSWORD | Redis 인증 값 |
+| FARMMARKET_IMAGE_BASEURL | 상품 이미지의 외부 접근 URL |
 
-> `ServerSideDiff`는 sync option이 아니라 비교 전략이다. 공식적인 Application 단위 설정은 `metadata.annotations[argocd.argoproj.io/compare-options]: ServerSideDiff=true`다. 현재 매니페스트는 기존 설정을 유지하고 있으며 별도 변경으로 검토해야 한다.
+Secret 키가 없으면 컨테이너 설정 단계에서 실패한다. 키가 있어도 빈 값이나 잘못된 접속 정보는 애플리케이션 시작 실패로 이어질 수 있다. Secret 수정 후에는 Pod 재시작이 필요하다. Redis 포트가 6379가 아니면 환경 values의 `env.REDIS_PORT`에 문자열로 지정한다.
 
-## Image Updater 옵션
+`FARMMARKET_IMAGE_BASEURL`은 prod에서 누락된 `farm-market.image.base-url`을 공급한다. storage-location은 공통 env에서 공급한다. Spring 환경변수는 점을 밑줄로 바꾸고 하이픈을 제거한다. [Spring Boot 공식 규칙](https://docs.spring.io/spring-boot/3.4/reference/features/external-config.html#features.external-config.typesafe-configuration-properties.relaxed-binding.environment-variables)
 
-```yaml
-metadata:
-  annotations:
-    argocd-image-updater.argoproj.io/image-list: "order-api=youngmin1085/order-service"
-    argocd-image-updater.argoproj.io/order-api.update-strategy: "newest-build"
-    argocd-image-updater.argoproj.io/order-api.allow-tags: "regexp:^dev-[a-f0-9]{7}$"
-    argocd-image-updater.argoproj.io/order-api.helm.image-name: deployment.containers[0].image
-    argocd-image-updater.argoproj.io/order-api.helm.image-tag: deployment.containers[0].tag
-    argocd-image-updater.argoproj.io/write-back-method: git
-```
+## 환경과 라우팅
 
-| 옵션                      | 의미                                                     |
-| ------------------------- | -------------------------------------------------------- |
-| `image-list`              | 추적할 이미지와 내부 alias 정의                          |
-| `<alias>.update-strategy` | tag 선택 전략: dev/stg는 `newest-build`, prod는 `semver` |
-| `<alias>.allow-tags`      | 허용할 tag를 정규식으로 제한                             |
-| `<alias>.helm.image-name` | 이미지 repository를 기록할 Helm values 경로              |
-| `<alias>.helm.image-tag`  | 이미지 tag를 기록할 Helm values 경로                     |
-| `write-back-method: git`  | 변경 결과를 Git의 `.argocd-source-*` 파일에 기록         |
+| 환경 | revision | profile | containerPort | class | NodePort HTTP / HTTPS |
+| --- | --- | --- | --- | --- | --- |
+| dev | dev | dev | 8081 | traefik-dev | 30080 / 30443 |
+| stg | stg | dev | 8081 | traefik-stg | 31080 / 31443 |
+| prod | master | prod | 8082 | traefik-prod | 32080 / 32443 |
 
-## AppProject 옵션
+`stg` 원격 브랜치는 검토일(2026-10-14)에 존재하지 않았다. stg를 연결하려면 먼저 해당 ref에 이 구성을 반영해야 한다. targetRevision은 자동으로 다른 브랜치로 대체하지 않는다.
 
-```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: AppProject
-metadata:
-  name: order-dev
-  namespace: argocd
-spec:
-  description: "Dev order service (주문팀)"
-  sourceRepos:
-    - https://github.com/ym1085/sandbox-k8s-gitops.git
-  destinations:
-    - namespace: order-dev
-      server: https://kubernetes.default.svc
-```
+Ingress의 `/api/v1` 경로로 auth·members·products·orders API를 같은 서버에 연결한다. URL rewrite는 사용하지 않는다. frontend 배포는 포함하지 않는다. host와 TLS는 미설정이므로 실제 도메인·인증서를 환경 values에 입력해야 한다.
 
-> 앱 워크로드 AppProject(`order-{env}`, `user-{env}`)에는 `clusterResourceWhitelist`가 없다. cluster-scoped 리소스가 필요한 infra(`infra-{env}`) AppProject만 `clusterResourceWhitelist`를 가진다.
+dev/stg의 `/images`는 API의 파일 리소스 핸들러로 전달한다. 현재 차트는 `/data/uploads`를 위한 PVC나 상품 이미지 파일을 공급하지 않는다. 이 경로를 쓸 때는 이미지 배포/저장소 연결을 추가해야 한다. prod API에는 이미지 파일 핸들러가 없으므로 외부 이미지 서버/CDN을 `FARMMARKET_IMAGE_BASEURL`로 지정한다.
 
-| 옵션                               | 의미                                         | 위반 시 결과                        |
-| ---------------------------------- | -------------------------------------------- | ----------------------------------- |
-| `metadata.name`                    | `Application.spec.project`에서 참조하는 이름 | 존재하지 않으면 Application 오류    |
-| `metadata.namespace`               | AppProject CR이 생성되는 namespace           | Application과 같은 `argocd` 사용    |
-| `description`                      | Project 용도 설명                            | 배포 동작에는 영향 없음             |
-| `sourceRepos`                      | Application이 사용할 수 있는 repository      | 목록에 없으면 배포 거부             |
-| `destinations[].server`            | 배포 가능한 Kubernetes cluster               | 허용되지 않은 cluster면 배포 거부   |
-| `destinations[].namespace`         | 배포 가능한 namespace                        | 허용되지 않은 namespace면 배포 거부 |
-| `clusterResourceWhitelist[].group` | 허용할 cluster-scoped API group              | 허용되지 않은 group이면 배포 거부   |
-| `clusterResourceWhitelist[].kind`  | 허용할 cluster-scoped resource kind          | 허용되지 않은 kind면 배포 거부      |
+API에는 Actuator/health endpoint가 없다. 현재 startup/readiness/liveness는 TCP 검사이며 DB·Redis 준비 상태나 요청 처리 성공을 보장하지 않는다. API에 전용 헬스체크가 생기면 HTTP 검사로 전환한다. dev/stg 종료 유예는 45초, prod는 75초로 API의 graceful shutdown 설정보다 길다.
 
-현재 `group: "*"`, `kind: "*"`는 모든 cluster-scoped 리소스를 허용한다. 운영 환경에서는 필요한 kind만 허용하는 최소 권한 설정을 별도로 검토해야 한다.
+## 이미지 승격과 롤백
 
-## 현재 Project 연결
+개발에서 검증한 이미지 태그를 stg/prod의 `image.tag`에 기록한다. 운영은 PR 검토 후 prod Application을 수동 sync한다. 롤백은 이전에 검증한 태그로 values를 되돌리고 다시 sync한다. DB 스키마 변경은 이미지 롤백만으로 되돌아가지 않는다.
 
-| 환경 | Application   | AppProject   | 허용 namespace       |
-| ---- | ------------- | ------------ | -------------------- |
-| dev  | order         | `order-dev`  | `order-dev`          |
-| dev  | user          | `user-dev`   | `user-dev`           |
-| dev  | ingress-nginx | `infra-dev`  | `ingress-nginx-dev`  |
-| stg  | order         | `order-stg`  | `order-stg`          |
-| stg  | user          | `user-stg`   | `user-stg`           |
-| stg  | ingress-nginx | `infra-stg`  | `ingress-nginx-stg`  |
-| prod | order         | `order-prod` | `order-prod`         |
-| prod | user          | `user-prod`  | `user-prod`          |
-| prod | ingress-nginx | `infra-prod` | `ingress-nginx-prod` |
+기존 Image Updater 설치 설정과 데모 write-back 파일을 제거했다. 새 API는 명시한 이미지 태그를 Git에서 관리하며 레지스트리의 최신 태그를 자동 선택하지 않는다. 추후 자동화할 때는 환경 values를 수정하는 PR을 생성하도록 연결한다.
 
-## 배포 판단 순서
+## 기존 데모 정리
 
-```text
-1. Application.source       repository, revision, chart 확인
-2. Application.destination  cluster, namespace 확인
-3. Application.project      AppProject 연결 확인
-4. AppProject               source와 destination 허용 여부 확인
-5. Application.syncPolicy   자동/수동 동기화 방식 확인
-```
+사용하지 않는 order-service/user-service 차트, 환경별 Application·AppProject, Image Updater 산출물을 저장소에서 제거했다. 이 변경은 기존 클러스터 리소스를 삭제하는 명령을 실행하지 않는다. 예전에 등록한 Application이나 Image Updater Helm release가 클러스터에 남아 있다면 실제 사용 여부를 확인하고 별도로 제거한다. 삭제한 기존 데모 리소스는 새 root의 관리 대상에 포함되지 않는다.
+
+## ingress-nginx에서 Traefik으로 전환
+
+[ingress-nginx 유지보수 종료](https://kubernetes.io/blog/2026/01/29/ingress-nginx-statement/)에 따라 [Traefik 공식 차트](https://github.com/traefik/traefik-helm-chart/releases/tag/v41.7.1) 41.7.1 / Proxy v3.7.14로 교체했다. 표준 Kubernetes Ingress만 사용하고 CRD·Gateway provider는 비활성화한다. API 경로와 NodePort는 위 표대로 유지한다. Application·namespace·IngressClass는 `traefik-{env}`로 새로 생성한다. 기존 IngressClass의 controller 필드를 변경하지 않는다.
+
+infra AppProject는 IngressClass·ClusterRole·ClusterRoleBinding과 Deployment·Service·ServiceAccount만 허용한다. Traefik은 환경의 `farm-market-{env}` namespace와 ingress class만 감시한다. 이 감시 설정이 Kubernetes RBAC 격리를 뜻하지는 않는다. 공식 차트의 ClusterRole에는 클러스터 전체 Secret 읽기 등이 포함되므로 컨트롤러와 infra Project 변경 권한은 관리자에게만 부여한다.
+
+신규 클러스터는 최초 연결 절차를 따른다. 기존 ingress-nginx가 실행 중이면 같은 NodePort를 두 Service가 동시에 사용할 수 없으므로 다음 순서로 점검 시간에 전환한다. 이 절차는 짧은 서비스 중단을 전제로 한다.
+
+1. 대상 환경의 기존 Application 선언과 실제 컨트롤러 리소스를 백업한다. 기존 컨트롤러가 처리하는 다른 Ingress와 nginx 전용 annotation이 있는지 확인한다. 이 저장소 밖의 Ingress는 자동 변환되지 않는다.
+2. 기존 root가 있다면 applications root와 projects root의 자동 sync를 중지한 뒤 기존 `ingress-nginx-{env}` Application의 자동 sync도 중지한다. root가 자동 sync를 다시 켜지 않도록 주의한다. 새 Git 구성을 반영하기 전에 수행한다.
+3. **기존 infra Project 권한이 남아 있는 동안** 기존 controller Application을 리소스까지 연쇄 삭제한다. 기존 Application에 삭제 finalizer가 없을 수 있으므로 단순 `kubectl delete application`만으로 정리되었다고 판단하지 않는다. Helm으로 설치했다면 해당 Helm release를 제거한다. 백업한 리소스 목록을 기준으로 잔여 Service·IngressClass·RBAC를 확인하고 위 NodePort가 해제되었는지 확인한다.
+4. 새 구성을 대상 브랜치에 반영하고 projects root를 먼저 sync해 새 infra Project를 반영한다. 이후 applications root를 sync하고 두 root의 자동 sync를 선언대로 복구한다. prod는 `traefik-prod`와 `farm-market-api-prod`를 수동 sync한다. dev/stg는 자식 Application이 자동 sync한다.
+5. 컨트롤러 Pod Ready, Service NodePort, API IngressClass와 `/api/v1` 요청을 확인한다. TLS를 설정했다면 HTTPS도 확인한다. 기존 namespace가 비어 있는지 확인한 뒤 필요할 때만 정리한다.
+
+롤백할 때는 새 컨트롤러의 자동 재생성을 먼저 중지하고 리소스를 제거해 NodePort를 해제한다. 백업한 기존 Project·Application·Ingress class 설정을 함께 복원한다. 유지보수가 종료된 컨트롤러 복원은 장애 복구용 임시 조치다. 저장소 수정 과정에서 위 클러스터 작업은 실행하지 않았다.
+
+## 검증 범위와 운영 전 남은 작업
+
+- CI는 Application 12개의 Project/source/destination 계약, 로컬 API 차트 3개 환경의 lint/render와 외부 Traefik 차트 3개 환경의 render, Secret 참조·포트·Ingress 연결, 잘못된 입력 거부와 bootstrap 스크립트를 검사한다. 미게시 이미지는 `--fixtures`에서만 테스트 이미지로 대체한다. 실제 이미지를 pull하거나 클러스터에 적용하지 않는다.
+- API에 DB 마이그레이션 도구가 없으며 dev는 schema validate, prod는 ddl-auto none이다. 기존 스키마 또는 별도 마이그레이션 절차가 필요하다.
+- API 소스 검토에서 주문 목록/상세 조회의 소유자 검증이 확인되지 않았다. 인터넷 공개 전에 API 저장소에서 인증된 회원 기준으로 조회를 제한해야 한다.
+
+API 계약은 [267200d 커밋](https://github.com/ym1085/farm-market-platform/tree/267200d1d0446201e19bed30c5eacb57ce6eaff9)의 api-server 설정과 컨트롤러를 기준으로 확인했다. 실제 이미지 빌드·DB 접속·부하 테스트·GitHub 보호 규칙은 이 변경에서 검증하지 않았다.

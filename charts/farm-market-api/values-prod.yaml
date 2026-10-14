@@ -1,0 +1,8 @@
+image:
+  tag: ""
+replicaCount: 2
+springProfile: prod
+containerPort: 8082
+terminationGracePeriodSeconds: 75
+ingress:
+  className: traefik-prod
