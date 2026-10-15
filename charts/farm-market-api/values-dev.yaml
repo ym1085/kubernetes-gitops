@@ -1,7 +1,14 @@
+##################################
+# Deployment: spec.template.spec.containers[]
+##################################
 image:
   tag: ""
 springProfile: dev
 containerPort: 8081
+
+##################################
+# Ingress: spec
+##################################
 ingress:
   className: traefik-dev
   paths:

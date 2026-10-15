@@ -6,7 +6,7 @@ metadata:
 spec:
   description: Farm Market API (prod)
   sourceRepos:
-    - https://github.com/ym1085/sandbox-k8s-gitops.git
+    - https://github.com/ym1085/kubernetes-gitops.git
   destinations:
     - namespace: farm-market-prod
       server: https://kubernetes.default.svc

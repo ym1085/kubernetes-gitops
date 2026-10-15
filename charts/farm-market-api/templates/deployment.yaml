@@ -42,16 +42,8 @@ spec:
               value: {{ .Values.springProfile | quote }}
             - name: SERVER_PORT
               value: {{ .Values.containerPort | quote }}
-            {{- range $name, $value := .Values.env }}
-            - name: {{ $name }}
-              value: {{ $value | quote }}
-            {{- end }}
-            {{- range list "SPRING_DATASOURCE_URL" "SPRING_DATASOURCE_USERNAME" "SPRING_DATASOURCE_PASSWORD" "JWT_SECRET" "REDIS_HOST" "REDIS_PASSWORD" "FARMMARKET_IMAGE_BASEURL" }}
-            - name: {{ . }}
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $.Values.existingSecret }}
-                  key: {{ . }}
+            {{- with .Values.env }}
+            {{- toYaml . | nindent 12 }}
             {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "additionalProperties": false,
-  "required": ["replicaCount", "image", "imagePullSecrets", "springProfile", "containerPort", "terminationGracePeriodSeconds", "existingSecret", "env", "resources", "startupProbe", "readinessProbe", "livenessProbe", "service", "ingress"],
+  "required": ["replicaCount", "image", "imagePullSecrets", "springProfile", "containerPort", "terminationGracePeriodSeconds", "env", "resources", "startupProbe", "readinessProbe", "livenessProbe", "service", "ingress"],
   "properties": {
     "replicaCount": {"type": "integer", "minimum": 1},
     "image": {
@@ -22,14 +22,21 @@
     "springProfile": {"enum": ["dev", "prod"]},
     "containerPort": {"$ref": "#/definitions/port"},
     "terminationGracePeriodSeconds": {"type": "integer", "minimum": 31},
-    "existingSecret": {"type": "string", "minLength": 1, "maxLength": 253, "pattern": "^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$"},
     "env": {
-      "type": "object",
-      "propertyNames": {
-        "pattern": "^[A-Z_][A-Z0-9_]*$",
-        "not": {"enum": ["SERVER_PORT", "SPRING_PROFILES_ACTIVE", "SPRING_DATASOURCE_URL", "SPRING_DATASOURCE_USERNAME", "SPRING_DATASOURCE_PASSWORD", "JWT_SECRET", "REDIS_HOST", "REDIS_PASSWORD", "FARMMARKET_IMAGE_BASEURL"]}
-      },
-      "additionalProperties": {"type": "string"}
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "value"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Z_][A-Z0-9_]*$",
+            "not": {"enum": ["SERVER_PORT", "SPRING_PROFILES_ACTIVE", "SPRING_DATASOURCE_PASSWORD", "JWT_SECRET", "REDIS_PASSWORD"]}
+          },
+          "value": {"type": "string"}
+        }
+      }
     },
     "resources": {
       "type": "object",
