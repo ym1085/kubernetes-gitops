@@ -6,7 +6,7 @@ metadata:
 spec:
   project: gitops-stg
   source:
-    repoURL: https://github.com/ym1085/sandbox-k8s-gitops.git
+    repoURL: https://github.com/ym1085/kubernetes-gitops.git
     targetRevision: stg
     path: argocd/applications/stg
     directory:

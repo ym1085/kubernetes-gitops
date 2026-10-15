@@ -6,7 +6,7 @@ metadata:
 spec:
   description: Administrator-owned Argo CD declarations (prod)
   sourceRepos:
-    - https://github.com/ym1085/sandbox-k8s-gitops.git
+    - https://github.com/ym1085/kubernetes-gitops.git
   destinations:
     - namespace: argocd
       server: https://kubernetes.default.svc

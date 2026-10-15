@@ -27,17 +27,17 @@
 - Application 이름은 `farm-market-api-{env}`, Helm release와 Service 이름은 `farm-market-api`다.
 - infra Project는 `infra-{env}`, namespace는 `traefik-{env}`, ingress class는 `traefik-{env}`다.
 - root Project는 `gitops-{env}`이며 argocd namespace의 Application·AppProject만 관리한다. root는 생성·수정을 자동 반영하지만 자동 prune은 하지 않는다.
-- 로컬 origin은 `https://github.com/ym1085/kubernetes-gitops.git`이며 선언은 기존 별칭 `https://github.com/ym1085/sandbox-k8s-gitops.git`를 사용한다. 로컬 수정만으로 원격 동기화가 바뀐다고 가정하지 않는다.
+- 로컬 origin과 GitOps 선언의 `repoURL`·`sourceRepos`는 `https://github.com/ym1085/kubernetes-gitops.git`로 통일한다. 로컬 수정만으로 원격 동기화가 바뀐다고 가정하지 않는다.
 - 원격 stg ref는 검토 시 없었다. 실제 배포 전 존재 여부와 대상 내용을 확인한다.
-- API에는 stg 프로필이 없어 dev 프로필과 별도 namespace/Secret을 사용한다. 전용 프로필이 추가되면 values와 테스트를 함께 수정한다.
+- API에는 stg 프로필이 없어 dev 프로필과 별도 namespace를 사용한다. 전용 프로필이 추가되면 values와 테스트를 함께 수정한다.
 
 ## 코드와 값의 계약
 
 - 단일 API 컨테이너의 image, resources, env를 독립된 값으로 관리한다. Kubernetes containers 배열 전체를 values에 복제하지 않는다.
 - SERVER_PORT는 containerPort에서 생성한다. Service targetPort와 Ingress backend는 이름 `http`로 연결한다.
-- 비밀값은 기존 Secret `farm-market-api-runtime`에서 주입한다. 입력 키는 examples의 env 양식과 Deployment를 함께 확인한다.
+- 현재 API 런타임 Secret 주입은 사용하지 않는다. 비밀값을 Git의 values에 넣지 않으며, 실제 배포 전 DB·Redis·JWT 필수 설정의 공급 방법을 준비한다. 입력 키는 examples의 env 양식을 확인한다.
 - `farm-market.image.base-url`의 환경변수 이름은 `FARMMARKET_IMAGE_BASEURL`이다. 하이픈을 밑줄로 바꾸지 않는다.
-- env 문자열의 빈 값, `false`, `0`도 보존한다. env 렌더링을 resources 조건에 묶지 않는다.
+- env는 name/value 리스트이며 환경별로 지정하면 공통 목록 전체를 대체한다. 문자열의 빈 값, `false`, `0`도 보존하고, env 렌더링을 resources 조건에 묶지 않는다.
 - 이미지 repository/tag가 없으면 렌더링이 실패하는 것이 의도한 동작이다. 가짜 배포 이미지를 실제 values에 넣지 않는다.
 - 이미지 버전은 환경 values에 명시하고 검증된 같은 태그를 승격한다. 기존 데모용 Image Updater 선언과 산출물은 제거했다.
 - prod graceful shutdown은 60초이므로 Kubernetes 종료 유예 시간은 이를 초과해야 한다.
