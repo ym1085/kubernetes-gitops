@@ -1,18 +1,28 @@
+##################################
+# Deployment: spec.replicas
+##################################
 replicaCount: 1
 
+##################################
+# Deployment: spec.template.spec
+##################################
+imagePullSecrets: []
+terminationGracePeriodSeconds: 45
+
+##################################
+# Deployment: spec.template.spec.containers[]
+##################################
 image:
   # Set the published repository and an immutable release tag before deployment.
   repository: ""
   tag: ""
   pullPolicy: IfNotPresent
-imagePullSecrets: []
 
 springProfile: ""
 containerPort: 8080
-terminationGracePeriodSeconds: 45
-existingSecret: farm-market-api-runtime
 env:
-  FARMMARKET_IMAGE_STORAGELOCATION: file:/data/uploads/
+  - name: FARMMARKET_IMAGE_STORAGELOCATION
+    value: "file:/data/uploads/"
 
 resources:
   requests:
@@ -40,9 +50,15 @@ livenessProbe:
   periodSeconds: 10
   timeoutSeconds: 2
 
+##################################
+# Service: spec
+##################################
 service:
   port: 80
 
+##################################
+# Ingress: spec (enabled는 리소스 생성 여부)
+##################################
 ingress:
   enabled: true
   className: ""

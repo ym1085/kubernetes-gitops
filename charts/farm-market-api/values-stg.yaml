@@ -1,8 +1,15 @@
-# shortcut: the API has no stg profile; isolate its dev profile with the stg namespace and Secret.
+##################################
+# Deployment: spec.template.spec.containers[]
+##################################
+# shortcut: the API has no stg profile; isolate its dev profile with the stg namespace.
 image:
   tag: ""
 springProfile: dev
 containerPort: 8081
+
+##################################
+# Ingress: spec
+##################################
 ingress:
   className: traefik-stg
   paths:

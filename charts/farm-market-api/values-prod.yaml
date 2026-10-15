@@ -1,8 +1,23 @@
+##################################
+# Deployment: spec.replicas
+##################################
+replicaCount: 2
+
+##################################
+# Deployment: spec.template.spec
+##################################
+terminationGracePeriodSeconds: 75
+
+##################################
+# Deployment: spec.template.spec.containers[]
+##################################
 image:
   tag: ""
-replicaCount: 2
 springProfile: prod
 containerPort: 8082
-terminationGracePeriodSeconds: 75
+
+##################################
+# Ingress: spec
+##################################
 ingress:
   className: traefik-prod

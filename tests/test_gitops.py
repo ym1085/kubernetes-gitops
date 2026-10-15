@@ -1,4 +1,5 @@
 import copy
+import json
 import os
 from pathlib import Path
 import shutil
@@ -20,7 +21,7 @@ class ChartTests(unittest.TestCase):
         cls.project = validate.read_yaml(ROOT / "argocd/projects/dev/apps/farm-market.yaml")
         cls.resources = validate.render(cls.app, fixtures=True)
 
-    def test_api_profiles_ports_and_secret_contract(self):
+    def test_api_profiles_ports_without_runtime_secret(self):
         for environment, profile, port in (("dev", "dev", 8081), ("stg", "dev", 8081), ("prod", "prod", 8082)):
             with self.subTest(environment=environment):
                 app = validate.read_yaml(ROOT / f"argocd/applications/{environment}/apps/farm-market-api.yaml")
@@ -29,24 +30,65 @@ class ChartTests(unittest.TestCase):
                 container = pod["containers"][0]
                 env = {e["name"]: e for e in container["env"]}
                 self.assertEqual(env["SPRING_PROFILES_ACTIVE"]["value"], profile)
+                self.assertEqual(env["FARMMARKET_IMAGE_STORAGELOCATION"]["value"], "file:/data/uploads/")
                 self.assertEqual(container["ports"][0]["containerPort"], port)
                 self.assertGreater(pod["terminationGracePeriodSeconds"], 60 if profile == "prod" else 30)
-                for key in ("SPRING_DATASOURCE_URL", "SPRING_DATASOURCE_USERNAME", "SPRING_DATASOURCE_PASSWORD", "JWT_SECRET", "REDIS_HOST", "REDIS_PASSWORD", "FARMMARKET_IMAGE_BASEURL"):
-                    self.assertEqual(env[key]["valueFrom"]["secretKeyRef"], {"name": "farm-market-api-runtime", "key": key})
+                self.assertTrue(all("valueFrom" not in entry for entry in container["env"]))
+                self.assertNotIn("JWT_SECRET", env)
+                self.assertNotIn("SPRING_DATASOURCE_PASSWORD", env)
 
     def test_env_survives_resource_removal_and_preserves_empty_values(self):
+        extra_env = [
+            {"name": "EMPTY", "value": ""},
+            {"name": "FEATURE_ENABLED", "value": "false"},
+            {"name": "RETRY_COUNT", "value": "0"},
+            {"name": "REDIS_HOST", "value": "redis.example"},
+        ]
         resources = validate.render(self.app, fixtures=True, extra=[
-            "--set-json", "resources={\"requests\":null,\"limits\":null}", "--set-string", "env.EMPTY=",
-            "--set-string", "env.FEATURE_ENABLED=false", "--set-string", "env.RETRY_COUNT=0",
+            "--set-json", "resources={\"requests\":null,\"limits\":null}",
+            "--set-json", "env=" + json.dumps(extra_env),
         ])
         container = next(r for r in resources if r["kind"] == "Deployment")["spec"]["template"]["spec"]["containers"][0]
         env = {e["name"]: e for e in container["env"]}
         self.assertEqual(container["resources"], {})
-        self.assertEqual(env["EMPTY"]["value"], "")
-        self.assertEqual(env["FEATURE_ENABLED"]["value"], "false")
-        self.assertEqual(env["RETRY_COUNT"]["value"], "0")
-        self.assertEqual(env["FARMMARKET_IMAGE_STORAGELOCATION"]["value"], "file:/data/uploads/")
-        self.assertIn("secretKeyRef", env["JWT_SECRET"]["valueFrom"])
+        self.assertEqual(container["env"][2:], extra_env)
+        self.assertNotIn("FARMMARKET_IMAGE_STORAGELOCATION", env)
+        self.assertNotIn("JWT_SECRET", env)
+        validate.validate_resources(self.app, self.project, resources, "traefik-dev")
+
+    def test_empty_env_list_keeps_generated_variables(self):
+        resources = validate.render(self.app, fixtures=True, extra=["--set-json", "env=[]"])
+        container = next(r for r in resources if r["kind"] == "Deployment")["spec"]["template"]["spec"]["containers"][0]
+        self.assertEqual(container["env"], [
+            {"name": "SPRING_PROFILES_ACTIVE", "value": "dev"},
+            {"name": "SERVER_PORT", "value": "8081"},
+        ])
+
+    def test_validator_rejects_duplicate_env_names(self):
+        for second_value in ("first", "second"):
+            with self.subTest(second_value=second_value):
+                env = [{"name": "DUPLICATE", "value": "first"}, {"name": "DUPLICATE", "value": second_value}]
+                resources = validate.render(self.app, fixtures=True, extra=["--set-json", "env=" + json.dumps(env)])
+                with self.assertRaisesRegex(ValueError, "Duplicate container environment variable"):
+                    validate.validate_resources(self.app, self.project, resources, "traefik-dev")
+
+    def test_env_rejects_invalid_entries(self):
+        invalid = [
+            {"LEGACY_MAP": "value"},
+            [{"name": "MISSING_VALUE"}],
+            [{"value": "missing name"}],
+            [{"name": "INVALID-NAME", "value": "value"}],
+            [{"name": "FEATURE_ENABLED", "value": False}],
+            [{"name": "RETRY_COUNT", "value": 0}],
+            [{"name": "EMPTY", "value": None}],
+            [{"name": "UNSUPPORTED", "value": "value", "unknown": "field"}],
+        ]
+        invalid += [[{"name": name, "value": "override"}] for name in (
+            "SERVER_PORT", "SPRING_PROFILES_ACTIVE", "SPRING_DATASOURCE_PASSWORD", "JWT_SECRET", "REDIS_PASSWORD",
+        )]
+        for env in invalid:
+            with self.subTest(env=env), self.assertRaises(ValueError):
+                validate.render(self.app, fixtures=True, extra=["--set-json", "env=" + json.dumps(env)])
 
     def test_release_name_is_used_for_all_connections(self):
         app = copy.deepcopy(self.app)
@@ -61,8 +103,6 @@ class ChartTests(unittest.TestCase):
             ["--set-string", "image.tag=latest"],
             ["--set", "containerPort=0"],
             ["--set-string", "existingSecret="],
-            ["--set-string", "env.JWT_SECRET=plaintext"],
-            ["--set-string", "env.SERVER_PORT=9000"],
             ["--set-string", "springProfile=stg"],
             ["--set-string", "springProfile=prod", "--set", "terminationGracePeriodSeconds=30"],
         ]
