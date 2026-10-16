@@ -1,4 +1,10 @@
 #!/bin/bash
+set -euo pipefail
+
+: "${CLUSTER_NAME:?CLUSTER_NAME is required}"
+: "${DEFAULT_REGION:?DEFAULT_REGION is required}"
+: "${VPC_ID:?VPC_ID is required}"
+
 # docs: https://artifacthub.io/packages/helm/aws/aws-load-balancer-controller
 
 # helm install aws-lb-controller eks/aws-load-balancer-controller
@@ -17,9 +23,9 @@ sleep 10
 # --set serviceAccount.name=aws-load-balancer-controller: ServiceAccount 이름
 helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller \
   -n kube-system \
-  --set clusterName=$CLUSTER_NAME \
-  --set region=$DEFAULT_REGION \
-  --set vpcId=$VPC_ID \
+  --set "clusterName=$CLUSTER_NAME" \
+  --set "region=$DEFAULT_REGION" \
+  --set "vpcId=$VPC_ID" \
   --set serviceAccount.create=false \
   --set serviceAccount.name=aws-load-balancer-controller
 

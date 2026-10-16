@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 echo "======================================"
 echo "Installing ArgoCD Service on kind k8s cluster"
 echo "======================================"
@@ -33,7 +33,7 @@ ROOT_DIR="$SCRIPT_DIR/../../.."
 echo -e "ROOT_DIR: $ROOT_DIR\n"
 
 ARGOCD_COMMON_VALUES="$ROOT_DIR/argocd/bootstrap/common/argo-cd-install-values.yaml"
-ARGOCD_ENV_VALUES="$ROOT_DIR/argocd/bootstrap/${PROFILE}/argo-cd-install-values.yaml"
+ARGOCD_ENV_VALUES="$ROOT_DIR/argocd/bootstrap/${PROFILE}/install/argo-cd-install-values.yaml"
 
 ####################################
 # ArgoCD namespace 생성
@@ -77,6 +77,10 @@ kubectl wait \
 echo "ArgoCD admin password 확인 중..."
 ARGOCD_PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret \
     -o jsonpath="{.data.password}" | base64 -d)
+if [[ -z "$ARGOCD_PASSWORD" ]]; then
+    echo "ERROR: Argo CD admin password is empty." >&2
+    exit 1
+fi
 echo
 echo "======================================"
 echo "ArgoCD 설치가 완료되었습니다."

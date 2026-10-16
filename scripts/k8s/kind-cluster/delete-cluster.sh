@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 echo "==================================="
 echo " Kubernetes in Docker (kind) Stop  "
 echo "==================================="
