@@ -2,7 +2,7 @@
 
 [Farm Market API](https://github.com/ym1085/farm-market-platform)와 Traefik의 Kubernetes 배포 설정입니다. API 소스와 이미지 빌드는 API 저장소에서 관리합니다.
 
-리소스별 YAML과 필드 설명은 [Kubernetes 리소스 스키마](docs/k8s-resource-schema.md)를 참고하세요.
+리소스별 YAML과 필드 설명은 [리소스 스키마](docs/resource-schema/README.md)를 참고하세요.
 
 ## 폴더 구조
 
@@ -53,7 +53,14 @@
 │           ├── create-iam-policy.sh
 │           ├── create-iam-service-account.sh
 │           └── deploy-controller.sh
-├── docs/k8s-resource-schema.md
+├── docs/resource-schema/
+│   ├── README.md
+│   ├── application.md
+│   ├── appproject.md
+│   ├── deployment.md
+│   ├── pod.md
+│   ├── service.md
+│   └── ingress.md
 ├── examples/farm-market-api.env.example
 ├── tests/
 │   ├── test_gitops.py
