@@ -25,6 +25,13 @@ def read_yaml(path):
         return yaml.safe_load(stream)
 
 
+def declaration_paths(directory):
+    return sorted(
+        path for path in directory.rglob("*")
+        if path.is_file() and path.suffix in {".yaml", ".yml", ".json"}
+    )
+
+
 def run_helm(arguments):
     result = subprocess.run([HELM, *arguments], text=True, capture_output=True, timeout=60)
     require(result.returncode == 0, result.stdout + result.stderr)
@@ -75,14 +82,19 @@ def validate_sync_policy(spec, environment):
 
 def validate_bootstrap(environment, apps):
     bootstrap = ROOT / "argocd/bootstrap" / environment
-    namespaces = list(yaml.safe_load_all((bootstrap / "namespaces.yaml").read_text()))
+    namespaces = [
+        namespace
+        for path in sorted((bootstrap / "namespaces").iterdir())
+        if path.is_file() and path.suffix in {".yaml", ".yml", ".json"}
+        for namespace in yaml.safe_load_all(path.read_text())
+    ]
     require(all(ns and ns.get("apiVersion") == "v1" and ns.get("kind") == "Namespace" for ns in namespaces),
             f"Bootstrap must contain only Namespace resources: {environment}")
     names = [ns["metadata"]["name"] for ns in namespaces]
     expected = {app["spec"]["destination"]["namespace"] for app in apps.values()} - {"argocd"}
     require(len(names) == len(set(names)) and set(names) == expected, f"Bootstrap namespaces do not match Application destinations: {environment}")
     common = read_yaml(ROOT / "argocd/bootstrap/common/argo-cd-install-values.yaml")
-    override = read_yaml(bootstrap / "argo-cd-install-values.yaml")
+    override = read_yaml(bootstrap / "install/argo-cd-install-values.yaml")
     insecure = override.get("configs", {}).get("params", {}).get("server.insecure", common["configs"]["params"]["server.insecure"])
     require(insecure is False, f"Argo CD TLS must be enabled: {environment}")
     if environment == "prod":
@@ -157,19 +169,20 @@ def validate_resources(app, project, resources, ingress_class):
 def validate(fixtures=False, external_charts=False):
     count = 0
     for environment, revision in REVISIONS.items():
-        project_paths = list((ROOT / "argocd/projects" / environment).rglob("*.yaml"))
-        project_paths.append(ROOT / "argocd/bootstrap" / environment / "root-project.yaml")
+        project_paths = declaration_paths(ROOT / "argocd/projects" / environment)
+        project_paths.append(ROOT / "argocd/bootstrap" / environment / "roots/root-applications-permissions.yaml")
         projects = {}
         for path in project_paths:
             project = read_yaml(path)
             name = project["metadata"]["name"]
             require(project["kind"] == "AppProject" and name not in projects, f"Invalid or duplicate project: {path}")
+            require(project["metadata"].get("namespace") == "argocd", f"Wrong AppProject namespace: {path}")
             for whitelist in ("clusterResourceWhitelist", "namespaceResourceWhitelist"):
                 require(all("*" not in entry.values() for entry in project["spec"].get(whitelist, [])), f"Wildcard resource permission: {path}")
             projects[name] = project
 
-        app_paths = list((ROOT / "argocd/applications" / environment).rglob("*.yaml"))
-        app_paths += list((ROOT / "argocd/bootstrap" / environment).glob("*-root.yaml"))
+        app_paths = declaration_paths(ROOT / "argocd/applications" / environment)
+        app_paths += list((ROOT / "argocd/bootstrap" / environment / "roots").glob("*-root.yaml"))
         apps = {}
         for path in app_paths:
             app = read_yaml(path)
