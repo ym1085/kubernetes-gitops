@@ -30,10 +30,10 @@ jobs:
           echo "$RUNNER_TEMP/linux-amd64" >> "$GITHUB_PATH"
       - name: Validate declarations and all charts
         run: python3 scripts/gitops/validate.py --fixtures --external-charts
-      - name: Test chart contracts and bootstrap scripts
+      - name: Test chart contracts and scripts
         run: python3 -m unittest discover -s tests -v
-      - name: Check Argo CD setup script syntax
+      - name: Check all shell script syntax
         run: |
-          for script in scripts/gitops/argocd/*.sh; do
+          for script in scripts/gitops/argocd/*.sh scripts/k8s/kind-cluster/*.sh scripts/aws/eks/*.sh scripts/aws/eks/aws-load-balancer-controller/*.sh; do
             bash -n "$script"
           done
