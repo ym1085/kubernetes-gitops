@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the Argo CD declarations and render every local Helm application."""
+"""Validate Argo CD declarations and render local and optionally external Helm charts."""
 
 import argparse
 import os
@@ -105,6 +105,8 @@ def validate_bootstrap(environment, apps):
 def render_external(app):
     source = app["spec"]["source"]
     helm = source["helm"]
+    require(set(helm) <= {"releaseName", "skipCrds", "values"},
+            f"Unsupported external Helm configuration: {app['metadata']['name']}")
     require(helm.get("skipCrds") is True, "External controller must not install CRDs")
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml") as values:
         values.write(helm["values"])
@@ -218,18 +220,18 @@ def validate(fixtures=False, external_charts=False):
         require(ingress_class == f"traefik-{environment}", "Wrong controller ingress class")
         provider = controller["providers"]["kubernetesIngress"]
         require(provider["ingressClass"] == ingress_class and provider["namespaces"] == [f"farm-market-{environment}"], "Wrong controller watch scope")
-        if external_charts:
-            resources = render_external(ingress)
-            validate_resources(ingress, projects[ingress["spec"]["project"]], resources, ingress_class)
-            print(f"OK: {ingress['metadata']['name']} ({len(resources)} resources)")
         for app in apps.values():
             source = app["spec"]["source"]
-            if source.get("path", "").startswith("charts/"):
+            if "chart" in source and external_charts:
+                resources = render_external(app)
+            elif source.get("path", "").startswith("charts/"):
                 chart, arguments = chart_arguments(app, fixtures)
                 run_helm(["lint", chart, "--strict", *arguments])
                 resources = render(app, fixtures)
-                validate_resources(app, projects[app["spec"]["project"]], resources, ingress_class)
-                print(f"OK: {app['metadata']['name']} ({len(resources)} resources)")
+            else:
+                continue
+            validate_resources(app, projects[app["spec"]["project"]], resources, ingress_class)
+            print(f"OK: {app['metadata']['name']} ({len(resources)} resources)")
     print(f"OK: {count} Argo CD Applications and their project/source/destination contracts")
 
 

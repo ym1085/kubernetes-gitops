@@ -133,6 +133,43 @@ class ChartTests(unittest.TestCase):
 
 
 class PolicyTests(unittest.TestCase):
+    def test_additional_external_chart_is_rendered_and_failure_propagates(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            shutil.copytree(ROOT / "argocd", root / "argocd")
+            app = validate.read_yaml(root / "argocd/applications/dev/farm-market/traefik.yaml")
+            app["metadata"]["name"] = "additional-controller-dev"
+            app["spec"]["source"]["chart"] = "chart-that-does-not-exist"
+            (root / "argocd/applications/dev/farm-market/additional.yaml").write_text(json.dumps(app))
+            with patch.object(validate, "ROOT", root), \
+                    patch.object(validate, "chart_arguments", return_value=("", [])), \
+                    patch.object(validate, "run_helm", return_value=""), \
+                    patch.object(validate, "render", return_value=[]), \
+                    patch.object(validate, "render_external", return_value=[]) as external, \
+                    patch.object(validate, "validate_resources") as resources, \
+                    contextlib.redirect_stdout(io.StringIO()):
+                validate.validate(fixtures=True, external_charts=False)
+                external.assert_not_called()
+                validate.validate(fixtures=True, external_charts=True)
+                self.assertEqual({call.args[0]["metadata"]["name"] for call in external.call_args_list},
+                                 {"additional-controller-dev", "traefik-dev", "traefik-stg", "traefik-prod"})
+                self.assertTrue(any(call.args[0] == app for call in resources.call_args_list))
+
+                def fail_missing_chart(candidate):
+                    if candidate["spec"]["source"]["chart"] == "chart-that-does-not-exist":
+                        raise ValueError("chart not found")
+                    return []
+
+                external.side_effect = fail_missing_chart
+                with self.assertRaisesRegex(ValueError, "chart not found"):
+                    validate.validate(fixtures=True, external_charts=True)
+
+    def test_external_chart_rejects_ignored_helm_options(self):
+        app = validate.read_yaml(ROOT / "argocd/applications/dev/farm-market/traefik.yaml")
+        app["spec"]["source"]["helm"]["parameters"] = [{"name": "replicas", "value": "2"}]
+        with self.assertRaisesRegex(ValueError, "Unsupported external Helm configuration"):
+            validate.render_external(app)
+
     def test_declarations_validate_all_extensions_and_project_namespace(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
