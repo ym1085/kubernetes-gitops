@@ -124,6 +124,8 @@ python3 scripts/gitops/validate.py --fixtures --external-charts
 python3 -m unittest discover -s tests -v
 ```
 
+`--external-charts`는 `source.chart`가 있는 모든 Application을 렌더링하고 Project 권한과 리소스 연결을 검사합니다. 외부 차트는 현재 `helm.releaseName`, 인라인 `helm.values`, `helm.skipCrds: true` 형식을 사용해야 합니다. 지원하지 않는 Helm 옵션은 무시하지 않고 검증을 실패시킵니다. 새 차트의 리소스 종류와 배포 방식이 기존 검증 규칙에 맞는지도 확인해야 합니다.
+
 `--fixtures`는 비어 있는 이미지 주소와 태그만 테스트 값으로 채웁니다. 실제 값을 입력한 뒤에는 이 옵션을 빼고 검증합니다. 두 명령 모두 클러스터에 배포하지 않으며, 이미지 존재·API 실행·외부 서비스 연결도 검사하지 않습니다.
 
 검증기는 Application·AppProject를 파일당 하나씩 읽으며 `.yaml`·`.yml`·`.json`을 검사합니다. Namespace 파일은 여러 YAML 문서도 허용합니다. 테스트는 API 차트 연결, 권한, 환경 정책, 스크립트 실패 처리를 확인하며 스크립트의 외부 명령은 대역으로 실행합니다.
