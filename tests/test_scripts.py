@@ -143,6 +143,9 @@ fi
             {"FAIL_COMMAND": "kubectl -n argocd get secret"},
             {"PASSWORD_BASE64": ""},
             {"PASSWORD_BASE64": "invalid-base64!"},
+            {"PASSWORD_BASE64": "dGVzdA"},
+            {"PASSWORD_BASE64": "dGVzdA==!"},
+            {"PASSWORD_BASE64": "=dGVzdA="},
         ):
             with self.subTest(overrides=overrides):
                 result, _ = self.run_script(ARGOCD, **overrides)

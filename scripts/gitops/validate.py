@@ -142,9 +142,14 @@ def validate_resources(app, project, resources, ingress_class):
         for container in spec["template"]["spec"]["containers"]:
             env = container.get("env", [])
             require(len({e["name"] for e in env}) == len(env), "Duplicate container environment variable")
-            if container["name"] == "api":
-                server_port = next(e["value"] for e in env if e["name"] == "SERVER_PORT")
-                require(str(container["ports"][0]["containerPort"]) == server_port, "SERVER_PORT does not match containerPort")
+            if app["spec"]["source"].get("path") == "charts/farm-market-api":
+                ports = container.get("ports", [])
+                require(len({p["name"] for p in ports}) == len(ports), "Duplicate container port name")
+                http_ports = [p for p in ports if p.get("name") == "http"]
+                require(len(http_ports) == 1, "Exactly one http container port is required")
+                require(http_ports[0].get("protocol", "TCP") == "TCP", "http container port must use TCP")
+                server_port = next((e.get("value") for e in env if e["name"] == "SERVER_PORT"), None)
+                require(str(http_ports[0]["containerPort"]) == server_port, "SERVER_PORT does not match http containerPort")
 
     for service in services.values():
         selected = [d for d in deployments if all(

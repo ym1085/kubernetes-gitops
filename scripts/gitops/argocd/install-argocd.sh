@@ -75,8 +75,14 @@ kubectl wait \
 # ArgoCD admin password 조회
 ####################################
 echo "ArgoCD admin password 확인 중..."
-ARGOCD_PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret \
-    -o jsonpath="{.data.password}" | base64 -d)
+ARGOCD_PASSWORD_BASE64=$(kubectl -n argocd get secret argocd-initial-admin-secret \
+    -o jsonpath="{.data.password}")
+# Some base64 implementations silently accept invalid input.
+if [[ ! "$ARGOCD_PASSWORD_BASE64" =~ ^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$ ]]; then
+    echo "ERROR: Argo CD admin password has invalid Base64 encoding." >&2
+    exit 1
+fi
+ARGOCD_PASSWORD=$(printf '%s' "$ARGOCD_PASSWORD_BASE64" | base64 -d)
 if [[ -z "$ARGOCD_PASSWORD" ]]; then
     echo "ERROR: Argo CD admin password is empty." >&2
     exit 1

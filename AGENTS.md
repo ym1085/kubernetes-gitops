@@ -2,6 +2,7 @@
 
 ## CRITICAL: 작성 규칙
 
+- CRITICAL: 수정 사항을 설명하거나 제안할 때는 대상 파일을 클릭 가능한 링크로 제공하고, 수정할 변수명 또는 정확한 라인 번호를 명시한다. 해당 위치에서 무엇을 어떻게 바꾸는지 쉽게 설명한다.
 - CRITICAL: 답변, 문서, 커밋 메시지에 가운뎃점(U+00B7)이나 장식용 구분 기호를 사용하지 않는다. 쉼표, 문장 또는 일반 Markdown 목록으로 구분한다.
 - CRITICAL: 커밋 메시지에 `Co-authored-by`, `Co-developed-by`, `Generated with` 같은 공동 작성자 표기나 AI 도구 서명을 추가하지 않는다. 변경 내용만 작성한다.
 
@@ -40,9 +41,10 @@
 ## 코드와 값의 계약
 
 - 단일 API 컨테이너의 image, resources, env를 독립된 값으로 관리한다. Kubernetes containers 배열 전체를 values에 복제하지 않는다.
-- SERVER_PORT는 containerPort에서 생성한다. Service targetPort와 Ingress backend는 이름 `http`로 연결한다.
+- 컨테이너 이름은 containerName, 포트는 ports 목록, SERVER_PORT는 환경별 env에서 관리한다. 검증기는 SERVER_PORT와 ports의 http containerPort가 같은지 검사한다. Service targetPort와 Ingress backend는 이름 `http`로 연결한다.
 - 현재 API 런타임 Secret 주입은 사용하지 않는다. 비밀값을 Git의 values에 넣지 않으며, 실제 배포 전 DB, Redis, JWT 필수 설정의 공급 방법을 준비한다. 입력 키는 examples의 env 양식을 확인한다.
 - `farm-market.image.base-url`의 환경변수 이름은 `FARMMARKET_IMAGE_BASEURL`이다. 하이픈을 밑줄로 바꾸지 않는다.
+- Spring 프로필과 TZ는 환경별 env에서 관리한다. 이미지 경로는 GitOps env에 지정하지 않는다. dev/stg는 API dev 프로필 기본값을 사용하며 prod는 배포 전 별도 공급이 필요하다.
 - env는 name/value 리스트이며 환경별로 지정하면 공통 목록 전체를 대체한다. 문자열의 빈 값, `false`, `0`도 보존하고, env 렌더링을 resources 조건에 묶지 않는다.
 - 이미지 repository/tag가 없으면 렌더링이 실패하는 것이 의도한 동작이다. 가짜 배포 이미지를 실제 values에 넣지 않는다.
 - 이미지 버전은 환경 values에 명시하고 검증된 같은 태그를 승격한다. 기존 데모용 Image Updater 선언과 산출물은 제거했다.

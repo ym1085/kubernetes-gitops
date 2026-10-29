@@ -26,7 +26,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       containers:
-        - name: api
+        - name: {{ .Values.containerName | quote }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
@@ -34,17 +34,14 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: [ALL]
+          {{- with .Values.ports }}
           ports:
-            - name: http
-              containerPort: {{ .Values.containerPort }}
-          env:
-            - name: SPRING_PROFILES_ACTIVE
-              value: {{ .Values.springProfile | quote }}
-            - name: SERVER_PORT
-              value: {{ .Values.containerPort | quote }}
-            {{- with .Values.env }}
             {{- toYaml . | nindent 12 }}
-            {{- end }}
+          {{- end }}
+          {{- with .Values.env }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           startupProbe:

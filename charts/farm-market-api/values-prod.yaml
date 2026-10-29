@@ -1,23 +1,33 @@
 ##################################
-# Deployment: spec.replicas
+# Deployment
 ##################################
-replicaCount: 2
 
-##################################
-# Deployment: spec.template.spec
-##################################
+# Pod Config
+replicaCount: 2
+# Allow more than the application shutdown timeout of 60 seconds.
 terminationGracePeriodSeconds: 75
 
-##################################
-# Deployment: spec.template.spec.containers[]
-##################################
+# Container Config
 image:
   tag: ""
-springProfile: prod
-containerPort: 8082
+
+# Container Ports Config
+ports:
+  - name: http
+    containerPort: 8082
+    protocol: TCP
+
+# Environment Config
+env:
+  - name: SERVER_PORT
+    value: "8082"
+  - name: SPRING_PROFILES_ACTIVE
+    value: "prod"
+  - name: TZ
+    value: "Asia/Seoul"
 
 ##################################
-# Ingress: spec
+# Ingress
 ##################################
 ingress:
   className: traefik-prod

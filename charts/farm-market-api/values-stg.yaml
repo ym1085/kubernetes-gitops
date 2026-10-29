@@ -1,14 +1,29 @@
 ##################################
-# Deployment: spec.template.spec.containers[]
+# Deployment
 ##################################
-# shortcut: the API has no stg profile; isolate its dev profile with the stg namespace.
+
+# Container Config
 image:
   tag: ""
-springProfile: dev
-containerPort: 8081
+
+# Container Ports Config
+ports:
+  - name: http
+    containerPort: 8081
+    protocol: TCP
+
+# Environment Config
+# The API has no stg profile; use dev with a separate namespace.
+env:
+  - name: SERVER_PORT
+    value: "8081"
+  - name: SPRING_PROFILES_ACTIVE
+    value: "dev"
+  - name: TZ
+    value: "Asia/Seoul"
 
 ##################################
-# Ingress: spec
+# Ingress
 ##################################
 ingress:
   className: traefik-stg
