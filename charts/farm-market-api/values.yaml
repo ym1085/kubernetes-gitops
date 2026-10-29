@@ -1,29 +1,52 @@
 ##################################
-# Deployment: spec.replicas
+# Deployment
 ##################################
-replicaCount: 1
 
-##################################
-# Deployment: spec.template.spec
-##################################
-imagePullSecrets: []
+# Pod Config
+replicaCount: 1
 terminationGracePeriodSeconds: 45
 
-##################################
-# Deployment: spec.template.spec.containers[]
-##################################
+# Container Config
+containerName: farm-market-api
 image:
   # Set the published repository and an immutable release tag before deployment.
   repository: ""
   tag: ""
   pullPolicy: IfNotPresent
+imagePullSecrets: []
 
-springProfile: ""
-containerPort: 8080
-env:
-  - name: FARMMARKET_IMAGE_STORAGELOCATION
-    value: "file:/data/uploads/"
+# Container Ports Config
+ports:
+  - name: http
+    containerPort: 8080
+    protocol: TCP
 
+# Environment Config
+# Set the complete environment list in values-{env}.yaml.
+env: []
+
+# Pod Health Checks
+# TCP checks the listener only; use HTTP probes when health endpoints are available.
+startupProbe:
+  tcpSocket:
+    port: http
+  periodSeconds: 10
+  failureThreshold: 30
+  timeoutSeconds: 2
+
+readinessProbe:
+  tcpSocket:
+    port: http
+  periodSeconds: 5
+  timeoutSeconds: 2
+
+livenessProbe:
+  tcpSocket:
+    port: http
+  periodSeconds: 10
+  timeoutSeconds: 2
+
+# Pod Resources Config
 resources:
   requests:
     cpu: 250m
@@ -32,34 +55,17 @@ resources:
     cpu: "1"
     memory: 1Gi
 
-# shortcut: TCP only checks the listener; use HTTP probes when the API exposes health endpoints.
-startupProbe:
-  tcpSocket:
-    port: http
-  periodSeconds: 10
-  failureThreshold: 30
-  timeoutSeconds: 2
-readinessProbe:
-  tcpSocket:
-    port: http
-  periodSeconds: 5
-  timeoutSeconds: 2
-livenessProbe:
-  tcpSocket:
-    port: http
-  periodSeconds: 10
-  timeoutSeconds: 2
-
 ##################################
-# Service: spec
+# Service
 ##################################
 service:
   port: 80
 
 ##################################
-# Ingress: spec (enabled는 리소스 생성 여부)
+# Ingress
 ##################################
 ingress:
+  # Enable or disable Ingress creation.
   enabled: true
   className: ""
   host: ""

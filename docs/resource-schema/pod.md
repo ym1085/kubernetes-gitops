@@ -24,7 +24,7 @@ Deployment의 `spec.template` 부분입니다. 별도 Pod 파일은 없으며, �
         {{- toYaml . | nindent 8 }}
       {{- end }}
       containers:
-        - name: api
+        - name: {{ .Values.containerName | quote }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
@@ -32,17 +32,14 @@ Deployment의 `spec.template` 부분입니다. 별도 Pod 파일은 없으며, �
             readOnlyRootFilesystem: true
             capabilities:
               drop: [ALL]
+          {{- with .Values.ports }}
           ports:
-            - name: http
-              containerPort: {{ .Values.containerPort }}
-          env:
-            - name: SPRING_PROFILES_ACTIVE
-              value: {{ .Values.springProfile | quote }}
-            - name: SERVER_PORT
-              value: {{ .Values.containerPort | quote }}
-            {{- with .Values.env }}
             {{- toYaml . | nindent 12 }}
-            {{- end }}
+          {{- end }}
+          {{- with .Values.env }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           startupProbe:
@@ -73,16 +70,16 @@ Deployment의 `spec.template` 부분입니다. 별도 Pod 파일은 없으며, �
 | 필드 | 설명 |
 | --- | --- |
 | `spec.containers[]` | Pod 안에서 실행할 컨테이너 목록<br>이 차트에서는 API 컨테이너 하나를 실행 |
-| `spec.containers[].name` | Pod 내부에서 컨테이너를 구분하는 이름 |
+| `spec.containers[].name` | Pod 내부에서 컨테이너를 구분하는 이름<br>`containerName` 값 사용 |
 | `spec.containers[].image` | `image.repository`와 `image.tag`를 합친 이미지 주소<br>둘 중 하나라도 비어 있으면 차트 검증 실패 |
 | `spec.containers[].imagePullPolicy` | `IfNotPresent`: 로컬에 없으면 다운로드<br>`Always`: 실행할 때 레지스트리에서 이미지 확인<br>`Never`: 로컬 이미지만 사용 |
 | `spec.containers[].securityContext.allowPrivilegeEscalation` | `false`: 상위 프로세스보다 높은 권한을 얻지 못하도록 제한 |
 | `spec.containers[].securityContext.readOnlyRootFilesystem` | 컨테이너의 루트 파일시스템을 읽기 전용으로 사용<br>쓰기 경로는 별도 볼륨이 필요 |
 | `spec.containers[].securityContext.capabilities.drop` | `ALL`은 컨테이너의 Linux capability를 모두 제거 |
 | `spec.containers[].ports[].name` | 컨테이너 포트의 이름<br>Service와 probe가 `http`라는 이름으로 참조 |
-| `spec.containers[].ports[].containerPort` | `containerPort`에서 읽는 애플리케이션 포트<br>이 선언 자체가 프로세스를 실행하거나 외부에 포트를 공개하지 않음 |
-| `spec.containers[].env[].name` | 환경변수 이름<br>`SPRING_PROFILES_ACTIVE`와 `SERVER_PORT`는 템플릿이 생성하고 추가 변수는 `env` 목록에서 읽음 |
-| `spec.containers[].env[].value` | 환경변수의 문자열 값<br>Spring 프로필은 `springProfile`, 서버 포트는 `containerPort`에서 생성 |
+| `spec.containers[].ports[].containerPort` | `ports` 목록에서 읽는 애플리케이션 포트<br>이 선언 자체가 프로세스를 실행하거나 외부에 포트를 공개하지 않음 |
+| `spec.containers[].env[].name` | 환경변수 이름<br>모든 환경변수를 `env` 목록에서 읽음 |
+| `spec.containers[].env[].value` | 환경변수의 문자열 값<br>Spring 프로필과 서버 포트 모두 환경별 `env`에서 지정 |
 | `spec.containers[].resources.requests` | 스케줄링에 사용할 CPU와 메모리 요청량 |
 | `spec.containers[].resources.limits` | CPU와 메모리 사용 상한<br>CPU는 제한되고 메모리 상한 초과 시 컨테이너가 OOM 종료될 수 있음 |
 | `spec.containers[].startupProbe` | 시작 완료를 검사<br>성공하기 전에는 readiness와 liveness 검사를 시작하지 않으며, 반복 실패하면 컨테이너를 재시작 |
@@ -98,9 +95,11 @@ Deployment의 `spec.template` 부분입니다. 별도 Pod 파일은 없으며, �
 | `spec.volumes[].name` | Pod 내부에서 볼륨을 구분하는 이름 |
 | `spec.volumes[].emptyDir` | Pod 수명에 연결된 임시 볼륨<br>컨테이너 재시작에는 유지되지만 Pod가 제거되면 데이터도 삭제됨 |
 
-`env`를 환경 values에서 지정하면 공통 목록 전체를 대체합니다. 빈 문자열, `"false"`, `"0"`도 문자열 그대로 전달합니다. 비밀값을 values에 기록하지 않으며 현재 차트에는 런타임 Secret 주입이 없습니다.
+`ports`와 `env`를 환경 values에서 지정하면 공통 목록 전체를 대체합니다. 빈 문자열, `"false"`, `"0"`도 문자열 그대로 전달합니다. 비밀값을 values에 기록하지 않으며 현재 차트에는 런타임 Secret 주입이 없습니다.
 
-쓰기용 볼륨은 `/tmp`에만 연결되어 있습니다. 환경변수의 `/data/uploads/` 경로에는 쓰기 가능한 볼륨이 연결되어 있지 않습니다.
+`SERVER_PORT`는 `ports` 목록에서 이름이 `http`인 포트 번호와 같아야 하며, 검증 스크립트에서 일치 여부를 확인합니다.
+
+GitOps에서는 이미지 저장 경로 환경변수를 지정하지 않습니다. dev/stg는 API dev 프로필의 기본 경로 `/data/uploads/`를 사용하며, prod는 배포 전에 저장 경로를 별도로 공급해야 합니다. 쓰기용 볼륨은 `/tmp`에만 연결되어 있으므로 로컬 업로드를 사용하려면 이미지 저장 경로에 쓰기 가능한 볼륨을 구성해야 합니다.
 
 ### 상태 검사
 

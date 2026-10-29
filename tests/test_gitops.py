@@ -32,7 +32,10 @@ class ChartTests(unittest.TestCase):
                 container = pod["containers"][0]
                 env = {e["name"]: e for e in container["env"]}
                 self.assertEqual(env["SPRING_PROFILES_ACTIVE"]["value"], profile)
-                self.assertEqual(env["FARMMARKET_IMAGE_STORAGELOCATION"]["value"], "file:/data/uploads/")
+                self.assertEqual(env["TZ"]["value"], "Asia/Seoul")
+                self.assertEqual(env["SERVER_PORT"]["value"], str(port))
+                self.assertEqual(container["name"], "farm-market-api")
+                self.assertNotIn("FARMMARKET_IMAGE_STORAGELOCATION", env)
                 self.assertEqual(container["ports"][0]["containerPort"], port)
                 self.assertGreater(pod["terminationGracePeriodSeconds"], 60 if profile == "prod" else 30)
                 self.assertTrue(all("valueFrom" not in entry for entry in container["env"]))
@@ -41,6 +44,8 @@ class ChartTests(unittest.TestCase):
 
     def test_env_survives_resource_removal_and_preserves_empty_values(self):
         extra_env = [
+            {"name": "SERVER_PORT", "value": "8081"},
+            {"name": "SPRING_PROFILES_ACTIVE", "value": "dev"},
             {"name": "EMPTY", "value": ""},
             {"name": "FEATURE_ENABLED", "value": "false"},
             {"name": "RETRY_COUNT", "value": "0"},
@@ -53,23 +58,31 @@ class ChartTests(unittest.TestCase):
         container = next(r for r in resources if r["kind"] == "Deployment")["spec"]["template"]["spec"]["containers"][0]
         env = {e["name"]: e for e in container["env"]}
         self.assertEqual(container["resources"], {})
-        self.assertEqual(container["env"][2:], extra_env)
+        self.assertEqual(container["env"], extra_env)
         self.assertNotIn("FARMMARKET_IMAGE_STORAGELOCATION", env)
         self.assertNotIn("JWT_SECRET", env)
         validate.validate_resources(self.app, self.project, resources, "traefik-dev")
 
-    def test_empty_env_list_keeps_generated_variables(self):
-        resources = validate.render(self.app, fixtures=True, extra=["--set-json", "env=[]"])
-        container = next(r for r in resources if r["kind"] == "Deployment")["spec"]["template"]["spec"]["containers"][0]
-        self.assertEqual(container["env"], [
-            {"name": "SPRING_PROFILES_ACTIVE", "value": "dev"},
-            {"name": "SERVER_PORT", "value": "8081"},
-        ])
+    def test_env_requires_explicit_profile(self):
+        for env in ([], [{"name": "TZ", "value": "Asia/Seoul"}]):
+            with self.subTest(env=env), self.assertRaises(ValueError):
+                validate.render(self.app, fixtures=True, extra=["--set-json", "env=" + json.dumps(env)])
+
+    def test_prod_profile_requires_long_shutdown_grace(self):
+        env = [{"name": "SERVER_PORT", "value": "8081"}, {"name": "SPRING_PROFILES_ACTIVE", "value": "prod"}]
+        for seconds in (60, 61):
+            args = ["--set-json", "env=" + json.dumps(env), "--set", f"terminationGracePeriodSeconds={seconds}"]
+            with self.subTest(seconds=seconds):
+                if seconds == 60:
+                    with self.assertRaises(ValueError):
+                        validate.render(self.app, fixtures=True, extra=args)
+                else:
+                    validate.render(self.app, fixtures=True, extra=args)
 
     def test_validator_rejects_duplicate_env_names(self):
         for second_value in ("first", "second"):
             with self.subTest(second_value=second_value):
-                env = [{"name": "DUPLICATE", "value": "first"}, {"name": "DUPLICATE", "value": second_value}]
+                env = [{"name": "SERVER_PORT", "value": "8081"}, {"name": "SPRING_PROFILES_ACTIVE", "value": "dev"}, {"name": "DUPLICATE", "value": "first"}, {"name": "DUPLICATE", "value": second_value}]
                 resources = validate.render(self.app, fixtures=True, extra=["--set-json", "env=" + json.dumps(env)])
                 with self.assertRaisesRegex(ValueError, "Duplicate container environment variable"):
                     validate.validate_resources(self.app, self.project, resources, "traefik-dev")
@@ -89,8 +102,55 @@ class ChartTests(unittest.TestCase):
             "SERVER_PORT", "SPRING_PROFILES_ACTIVE", "SPRING_DATASOURCE_PASSWORD", "JWT_SECRET", "REDIS_PASSWORD",
         )]
         for env in invalid:
+            if isinstance(env, list):
+                env = [{"name": "SERVER_PORT", "value": "8081"}, {"name": "SPRING_PROFILES_ACTIVE", "value": "dev"}] + env
             with self.subTest(env=env), self.assertRaises(ValueError):
                 validate.render(self.app, fixtures=True, extra=["--set-json", "env=" + json.dumps(env)])
+
+    def test_ports_and_container_name_are_configurable(self):
+        ports = [
+            {"name": "management", "containerPort": 9090, "protocol": "TCP"},
+            {"name": "http", "containerPort": 8081, "protocol": "TCP"},
+        ]
+        resources = validate.render(self.app, fixtures=True, extra=[
+            "--set-json", "ports=" + json.dumps(ports), "--set-string", "containerName=custom-api",
+        ])
+        container = next(r for r in resources if r["kind"] == "Deployment")["spec"]["template"]["spec"]["containers"][0]
+        self.assertEqual(container["name"], "custom-api")
+        self.assertEqual(container["ports"], ports)
+        validate.validate_resources(self.app, self.project, resources, "traefik-dev")
+        for failure in ("mismatch", "duplicate", "missing"):
+            broken = copy.deepcopy(resources)
+            candidate = next(r for r in broken if r["kind"] == "Deployment")["spec"]["template"]["spec"]["containers"][0]
+            if failure == "mismatch":
+                candidate["ports"][1]["containerPort"] = 8082
+            elif failure == "duplicate":
+                candidate["ports"].append(copy.deepcopy(candidate["ports"][1]))
+            else:
+                candidate["env"] = [e for e in candidate["env"] if e["name"] != "SERVER_PORT"]
+            with self.subTest(failure=failure), self.assertRaises(ValueError):
+                validate.validate_resources(self.app, self.project, broken, "traefik-dev")
+
+    def test_container_name_preserves_string_type(self):
+        for name in ("123", "true"):
+            with self.subTest(name=name):
+                resources = validate.render(self.app, fixtures=True, extra=[
+                    "--set-string", f"containerName={name}",
+                ])
+                container = next(r for r in resources if r["kind"] == "Deployment")["spec"]["template"]["spec"]["containers"][0]
+                self.assertIsInstance(container["name"], str)
+                self.assertEqual(container["name"], name)
+
+    def test_required_ports_and_server_port(self):
+        invalid = [
+            ["--set-json", "ports=[]"],
+            ["--set-string", "ports[0].name=management"],
+            ["--set-string", "ports[0].protocol=UDP"],
+            ["--set-json", 'env=[{"name":"SPRING_PROFILES_ACTIVE","value":"dev"}]'],
+        ]
+        for args in invalid:
+            with self.subTest(args=args), self.assertRaises(ValueError):
+                validate.render(self.app, fixtures=True, extra=args)
 
     def test_release_name_is_used_for_all_connections(self):
         app = copy.deepcopy(self.app)
@@ -103,10 +163,12 @@ class ChartTests(unittest.TestCase):
         invalid = [
             ["--set-string", "image.repository="],
             ["--set-string", "image.tag=latest"],
-            ["--set", "containerPort=0"],
+            ["--set", "containerPort=8081"],
+            ["--set", "ports[0].containerPort=0"],
+            ["--set-string", "containerName=INVALID_NAME"],
             ["--set-string", "existingSecret="],
             ["--set-string", "springProfile=stg"],
-            ["--set-string", "springProfile=prod", "--set", "terminationGracePeriodSeconds=30"],
+            ["--set-json", 'env=[{"name":"SPRING_PROFILES_ACTIVE","value":"stg"}]'],
         ]
         for arguments in invalid:
             with self.subTest(arguments=arguments), self.assertRaises(ValueError):

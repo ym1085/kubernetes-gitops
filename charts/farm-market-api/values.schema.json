@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "additionalProperties": false,
-  "required": ["replicaCount", "image", "imagePullSecrets", "springProfile", "containerPort", "terminationGracePeriodSeconds", "env", "resources", "startupProbe", "readinessProbe", "livenessProbe", "service", "ingress"],
+  "required": ["replicaCount", "image", "imagePullSecrets", "containerName", "ports", "terminationGracePeriodSeconds", "env", "resources", "startupProbe", "readinessProbe", "livenessProbe", "service", "ingress"],
   "properties": {
     "replicaCount": {"type": "integer", "minimum": 1},
     "image": {
@@ -19,11 +19,27 @@
       "type": "array",
       "items": {"type": "object", "additionalProperties": false, "required": ["name"], "properties": {"name": {"type": "string", "minLength": 1}}}
     },
-    "springProfile": {"enum": ["dev", "prod"]},
-    "containerPort": {"$ref": "#/definitions/port"},
+    "containerName": {"type": "string", "maxLength": 63, "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"},
+    "ports": {
+      "type": "array", "minItems": 1,
+      "contains": {"required": ["name"], "properties": {"name": {"const": "http"}, "protocol": {"const": "TCP"}}},
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["name", "containerPort", "protocol"],
+        "properties": {
+          "name": {"type": "string", "maxLength": 15, "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", "allOf": [{"pattern": "[a-z]"}]},
+          "containerPort": {"$ref": "#/definitions/port"},
+          "protocol": {"enum": ["TCP", "UDP", "SCTP"]}
+        }
+      }
+    },
     "terminationGracePeriodSeconds": {"type": "integer", "minimum": 31},
     "env": {
       "type": "array",
+      "allOf": [
+        {"contains": {"required": ["name"], "properties": {"name": {"const": "SPRING_PROFILES_ACTIVE"}}}},
+        {"contains": {"required": ["name"], "properties": {"name": {"const": "SERVER_PORT"}, "value": {"pattern": "^[1-9][0-9]{0,4}$"}}}}
+      ],
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -32,10 +48,14 @@
           "name": {
             "type": "string",
             "pattern": "^[A-Z_][A-Z0-9_]*$",
-            "not": {"enum": ["SERVER_PORT", "SPRING_PROFILES_ACTIVE", "SPRING_DATASOURCE_PASSWORD", "JWT_SECRET", "REDIS_PASSWORD"]}
+            "not": {"enum": ["SPRING_DATASOURCE_PASSWORD", "JWT_SECRET", "REDIS_PASSWORD"]}
           },
           "value": {"type": "string"}
-        }
+        },
+        "allOf": [
+          {"if": {"properties": {"name": {"const": "SPRING_PROFILES_ACTIVE"}}}, "then": {"properties": {"value": {"enum": ["dev", "prod"]}}}},
+          {"if": {"properties": {"name": {"const": "SERVER_PORT"}}}, "then": {"properties": {"value": {"pattern": "^[1-9][0-9]{0,4}$"}}}}
+        ]
       }
     },
     "resources": {
@@ -67,7 +87,7 @@
       "then": {"properties": {"className": {"minLength": 1}}}
     }
   },
-  "allOf": [{"if": {"properties": {"springProfile": {"const": "prod"}}}, "then": {"properties": {"terminationGracePeriodSeconds": {"minimum": 61}}}}],
+  "allOf": [{"if": {"properties": {"env": {"contains": {"required": ["name", "value"], "properties": {"name": {"const": "SPRING_PROFILES_ACTIVE"}, "value": {"const": "prod"}}}}}}, "then": {"properties": {"terminationGracePeriodSeconds": {"minimum": 61}}}}],
   "definitions": {
     "port": {"type": "integer", "minimum": 1, "maximum": 65535},
     "resourceList": {"type": "object", "additionalProperties": false, "properties": {"cpu": {"type": "string", "minLength": 1}, "memory": {"type": "string", "minLength": 1}}},

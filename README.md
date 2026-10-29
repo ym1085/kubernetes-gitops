@@ -144,7 +144,7 @@ python3 -m unittest discover -s tests -v
 
 - **이미지:** 공통 `image.repository`와 환경별 `image.tag` 입력. 현재는 비어 있습니다. 이미지는 non-root 사용자로 실행해야 하며, 차트에서 쓰기용으로 마운트한 경로는 `/tmp`입니다.
 - **DB, Redis, JWT 설정:** 공급 방법 결정. 현재 차트는 런타임 Secret을 주입하지 않습니다. 필요한 변수는 [환경변수 예시](examples/farm-market-api.env.example)를 참고하고, 비밀값은 Git에 넣지 않습니다.
-- **이미지 저장소:** `/data/uploads/` 설정은 있지만 쓰기 가능한 볼륨은 없습니다. 로컬 업로드를 사용하려면 저장 방식과 볼륨을 먼저 구성해야 합니다. prod의 이미지 제공 주소 `FARMMARKET_IMAGE_BASEURL`도 준비합니다.
+- **이미지 저장소:** GitOps에서는 이미지 저장 경로 환경변수를 지정하지 않습니다. dev/stg는 API dev 프로필의 기본 경로 `/data/uploads/`를 사용하며, prod는 배포 전에 저장 경로를 별도로 공급해야 합니다. 현재 해당 경로에는 쓰기 가능한 볼륨이 없으므로 로컬 업로드를 사용하려면 저장 방식과 볼륨을 먼저 구성해야 합니다. prod의 이미지 제공 주소 `FARMMARKET_IMAGE_BASEURL`도 준비합니다.
 - **Git 브랜치:** 위 표의 브랜치에 변경을 반영합니다. 2026-10-16 원격 확인 결과 `dev`·`master`는 있고 `stg`는 없습니다. 로컬 파일 수정만으로 Argo CD가 읽는 원격 내용은 바뀌지 않습니다.
 
 설치에는 kubectl·Helm·클러스터 관리자 권한이 필요합니다. 아래 명령은 저장소 루트에서 실행합니다. **현재 kubectl context에 적용되며, dev/stg는 등록 후 자동 배포됩니다.**
